@@ -54,6 +54,16 @@ Pushing to `main` builds, type-checks, and deploys. The workflow needs:
 - Secret `RAILWAY_TOKEN` — a Railway **project** token (Project → Settings → Tokens).
 - Optional variable `RAILWAY_SERVICE` — service name, defaults to `desapego`.
 
+### Port
+
+The service pins `PORT=3000` as a Railway variable, and the public domain
+targets port 3000. Both halves matter: `next start` binds whatever `PORT`
+says, so if the variable is removed the app binds Railway's injected port
+while the domain still routes to 3000, and every request hangs with no error
+anywhere — the deployment still reports SUCCESS because the internal health
+check passes. If you ever recreate the service, set the variable and the
+domain's target port together.
+
 Manual deploy from a local checkout:
 
 ```bash
