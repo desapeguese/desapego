@@ -37,7 +37,7 @@ npm run build && npm start   # production build
 | `app/icon.png` | Favicon (the “1” numeral off the cédula). |
 | `public/cedula-*.webp` | The cédula artwork, cropped from the original mock-up. |
 | `public/og.jpg` | 1200×630 social preview card. |
-| `railway.json` | Build and start commands, health check. |
+| `.railway/railway.ts` | Infrastructure as Code: build/start commands, health check, custom domain. |
 
 ### Bandwidth
 
@@ -53,6 +53,24 @@ Pushing to `main` builds, type-checks, and deploys. The workflow needs:
 
 - Secret `RAILWAY_TOKEN` — a Railway **project** token (Project → Settings → Tokens).
 - Optional variable `RAILWAY_SERVICE` — service name, defaults to `desapego`.
+
+### Settings that are not in code
+
+Railway's IaC DSL models build, start, healthcheck, replicas, env, domains and
+volumes — but **not** restart policy or sleep. These three are set on the
+service and persist, and they are deliberately absent from
+`.railway/railway.ts`: writing them through the raw `deploy` escape hatch
+applies them but never reads them back, so every `railway config plan` would
+propose the same change forever.
+
+| Setting | Value | Why |
+|---|---|---|
+| `restartPolicyType` | `ON_FAILURE` | Restart a crashed container, don't loop on a clean exit. |
+| `restartPolicyMaxRetries` | `10` | Give up rather than crashloop forever. |
+| `sleepApplication` | `false` | A public landing page shouldn't make its first visitor wait on a cold start. Free-plan services are forced to sleep; Hobby is not. |
+
+If the service is ever recreated, set these by hand — `railway config apply`
+will not restore them.
 
 ### Port
 
