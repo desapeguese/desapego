@@ -35,8 +35,8 @@ npm run build && npm start   # production build
 | `app/layout.tsx` | `<html>`, fonts, and all SEO/OpenGraph metadata. |
 | `app/globals.css` | Every style. No CSS framework — the page is small enough not to need one. |
 | `app/icon.png` | Favicon (the “1” numeral off the cédula). |
-| `public/cedula-*.webp` | The cédula artwork, cropped from the original mock-up. |
-| `public/og.jpg` | 1200×630 social preview card. |
+| `public/cedula-*-v2.webp` | The 2026 cédula artwork. Suffixed because the cache header is `immutable` — a new design needs a new filename, never an overwrite. |
+| `public/og-v2.jpg` | 1200×630 social preview card, built from the cédula front. |
 | `.railway/railway.ts` | Infrastructure as Code: build/start commands, health check, custom domain. |
 
 ### Bandwidth

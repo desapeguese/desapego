@@ -14,19 +14,19 @@ export default function Home() {
       <figure className="cedulas">
         <img
           className="cedula cedula--frente"
-          src="/cedula-frente.webp"
-          width={680}
-          height={286}
-          alt="Frente da cédula de 1 Desapego: Circula ideias, impulsiona pessoas, transforma realidades."
+          src="/cedula-frente-v2.webp"
+          width={916}
+          height={414}
+          alt="Frente da cédula de 1 Desapego: uma roda de pessoas de mãos dadas ao redor do símbolo da reciclagem, com o lema “Desapegue-se — o festival dos futuros que queremos”."
           fetchPriority="high"
           decoding="async"
         />
         <img
           className="cedula cedula--verso"
-          src="/cedula-verso.webp"
-          width={664}
-          height={270}
-          alt="Verso da cédula de 1 Desapego: Cuidar do agora para um amanhã mais justo e regenerativo, sobre uma paisagem do Rio de Janeiro."
+          src="/cedula-verso-v2.webp"
+          width={916}
+          height={414}
+          alt="Verso da cédula de 1 Desapego: economia circular, sustentabilidade, economia solidária e abundância, com um QR code para a carteira digital e o lema “a riqueza está em circular”."
           decoding="async"
         />
       </figure>

@@ -31,10 +31,10 @@ export const metadata: Metadata = {
     description: DESCRICAO,
     images: [
       {
-        url: "/og.jpg",
+        url: "/og-v2.jpg",
         width: 1200,
         height: 630,
-        alt: "Cédula de 1 Desapego, com folhagem tropical e um hibisco vermelho.",
+        alt: "Cédula de 1 Desapego: uma roda de pessoas de mãos dadas ao redor do símbolo da reciclagem.",
       },
     ],
   },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: TITULO,
     description: DESCRICAO,
-    images: ["/og.jpg"],
+    images: ["/og-v2.jpg"],
   },
 };
 
