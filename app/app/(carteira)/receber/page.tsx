@@ -38,7 +38,7 @@ export default async function Receber() {
     type: "svg",
     errorCorrectionLevel: "L",
     margin: 1,
-    color: { dark: "#143D20", light: "#ffffff" },
+    color: { dark: "#1F3F10", light: "#ffffff" },
   });
 
   return (
@@ -54,12 +54,12 @@ export default async function Receber() {
           </defs>
           <text
             style={{ fontFamily: "var(--titulo)", fontWeight: 600, fontSize: 14, letterSpacing: 1.5 }}
-            fill="#1F5A2E"
+            fill="#34681A"
           >
             <textPath href="#roda-volta" textLength="940">{LEMA}</textPath>
           </text>
-          <circle cx="165" cy="165" r="128" fill="none" stroke="#1F5A2E" strokeWidth="3" />
-          <g stroke="#1F5A2E" strokeWidth="2">
+          <circle cx="165" cy="165" r="128" fill="none" stroke="#34681A" strokeWidth="3" />
+          <g stroke="#34681A" strokeWidth="2">
             {PESSOAS.map((p) => (
               <circle key={`${p.cx}-${p.cy}`} cx={p.cx} cy={p.cy} r="11" fill={p.cor} />
             ))}

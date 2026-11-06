@@ -4,8 +4,15 @@ export default function Home() {
   return (
     <main className="pagina">
       <header>
+        <img
+          className="logo-landing"
+          src="/logo-festival-branco-v1.png"
+          width={900}
+          height={313}
+          alt="Desapegue-se"
+        />
         <p className="sobrenome">
-          Desapegue-se · O Festival dos Futuros que Queremos
+          O Festival dos Futuros que Queremos
         </p>
         <h1 className="titulo">Moeda Social Desapego</h1>
         <p className="subtitulo">
@@ -14,21 +21,23 @@ export default function Home() {
       </header>
 
       <figure className="cedulas">
+        {/* A cédula da roda de pessoas (o verso) fica por cima, a pedido da
+            organização; as classes --frente/--verso dizem só a posição na pilha. */}
         <img
           className="cedula cedula--frente"
-          src="/cedula-frente-v2.webp"
+          src="/cedula-verso-v2.webp"
           width={916}
           height={414}
-          alt="Frente da cédula de 1 Desapego: uma roda de pessoas de mãos dadas ao redor do símbolo da reciclagem, com o lema “Desapegue-se — o festival dos futuros que queremos”."
+          alt="Verso da cédula de 1 Desapego: uma roda de pessoas de mãos dadas em volta de objetos trocados, com um QR code para a carteira digital e o lema “a riqueza está em circular”."
           fetchPriority="high"
           decoding="async"
         />
         <img
           className="cedula cedula--verso"
-          src="/cedula-verso-v2.webp"
+          src="/cedula-frente-v2.webp"
           width={916}
           height={414}
-          alt="Verso da cédula de 1 Desapego: economia circular, sustentabilidade, economia solidária e abundância, com um QR code para a carteira digital e o lema “a riqueza está em circular”."
+          alt="Frente da cédula de 1 Desapego: o símbolo do Festival, a reciclagem na cabeça, com o lema “Desapegue-se — o festival dos futuros que queremos”."
           decoding="async"
         />
       </figure>

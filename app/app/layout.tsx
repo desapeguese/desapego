@@ -14,6 +14,9 @@ export const viewport: Viewport = { themeColor: "#D9DFCF", colorScheme: "light" 
 export default function LayoutDoApp({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <main className={`app ${fontesDoApp}`}>
+      <div className="logo-topo">
+        <img src="/logo-festival-cor-v1.png" width={900} height={313} alt="Desapegue-se" />
+      </div>
       {children}
       <RegistrarSw />
     </main>

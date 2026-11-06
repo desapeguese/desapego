@@ -59,12 +59,27 @@ npm run build && npm start   # build de produção (o start aplica as migraçõe
 
 ## Identidade visual do app
 
-O app segue a cédula, não a landing: papel verde-claro, tinta verde, numerais
-em Barlow Condensed, a faixa de guilhochê em tudo o que mostra um valor e as
-cores das pessoas da roda nos avatares. O desenho de referência é o canvas
-“Carteira Desapego — identidade visual” no Claude Design
+O app segue a cédula, não a landing: papel verde-claro, numerais condensados e
+a faixa de guilhochê em tudo o que mostra um valor. O desenho de referência é o
+canvas “Carteira Desapego — identidade visual” no Claude Design
 (<https://claude.ai/artifact/Urhp4o2sYHNpjwGjWNQFqb>, privado do autor).
 
+As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
+2.0, setembro de 2026):
+
+| Cor | Hex | Onde |
+|---|---|---|
+| Verde escuro | `#34681A` | Tinta: títulos, numerais, bordas, botão principal |
+| Verde médio | `#92C56E` | Botão de destaque, avisos de sucesso |
+| Rosa, azul, laranja, roxo | `#E46095`, `#5FACD9`, `#F18815`, `#5C4B9B` | Rebaixadas, nos avatares (`CORES_DA_RODA` em `lib/formato.ts`) e nos alertas |
+
+- `public/logo-festival-*-v1.png` são os logos horizontais do manual, só
+  recortados rente à marca; `public/logo-simbolo-v1.png` é o símbolo, de onde
+  `scripts/gerar-icones.mjs` gera os ícones do PWA e o favicon. O manual proíbe
+  alterar proporções, cores ou a disposição da marca.
+- **Fonte:** o manual pede a família Univers, que é comercial. O app usa Barlow
+  e Barlow Condensed (Google Fonts), parecidas, até haver confirmação de que o
+  Festival tem licença de Univers para uso em site.
 - Cada conta tem um número de série no formato da cédula (`DES-2026-00412`):
   ano de criação + `conta.numero`, sequencial.
 - Cada transação é mostrada por um número curto (`7F3A-91C2`), os oito
@@ -116,7 +131,7 @@ cores das pessoas da roda nos avatares. O desenho de referência é o canvas
 | `app/app/entrar/`, `app/app/cadastro/` | Login e primeiro acesso. |
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
 | `app/manifest.ts`, `public/sw.js`, `public/sem-conexao.html` | PWA: manifesto, service worker e a tela sem internet. |
-| `public/icone-*-v1.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs`. |
+| `public/icone-*-v2.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs` a partir do símbolo do Festival. |
 | `app/termos/` | Termos de uso e privacidade (rascunho, ver abaixo). |
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
@@ -126,7 +141,7 @@ cores das pessoas da roda nos avatares. O desenho de referência é o canvas
 | `lib/db/schema.ts` | Esquema do banco. |
 | `drizzle/` | Migrações SQL, aplicadas por `scripts/migrar.mjs`. |
 | `tests/` | Testes do livro e da gestão de pessoas. |
-| `app/icon.png` | Favicon (the “1” numeral off the cédula). |
+| `app/icon.png` | Favicon: o símbolo do Festival. |
 | `public/cedula-*-v2.webp` | The 2026 cédula artwork. Suffixed because the cache header is `immutable` — a new design needs a new filename, never an overwrite. |
 | `public/og-v2.jpg` | 1200×630 social preview card, built from the cédula front. |
 | `.railway/railway.ts` | Infrastructure as Code: build/start commands, health check, custom domain. |
@@ -185,8 +200,6 @@ railway up
 ## Not here yet
 
 - Etapas 4 e 5 do [PRD](docs/PRD.md): Admin (perfis, limites, relatórios), passkey e 2FA, edições do festival.
-- **Ícone definitivo do app.** Os ícones do PWA são um "1" desenhado em código,
-  provisório até existir a arte oficial em alta resolução.
 - **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
   revisão jurídica. Ao publicar o texto final, mude `VERSAO_TERMOS` em
   `lib/sessao.ts`: é ela que fica gravada em cada aceite.

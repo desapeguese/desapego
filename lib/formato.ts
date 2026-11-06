@@ -44,8 +44,12 @@ export function iniciais(nome: string): string {
   return (primeira + ultima).toUpperCase();
 }
 
-/** As cores das pessoas da roda da cédula. Todas dão contraste com a tinta escura. */
-export const CORES_DA_RODA = ["#F29CC4", "#8CC3EC", "#F5D25A", "#F5A95C", "#B79BE0", "#A9D86A"];
+/**
+ * As cores das pessoas da roda: as secundárias do manual da marca (rosa, azul,
+ * laranja, roxo) e o verde médio, rebaixadas para dar contraste com as
+ * iniciais em tinta escura.
+ */
+export const CORES_DA_RODA = ["#EC90B5", "#8FC5E4", "#F5AC5C", "#A69DCA", "#92C56E"];
 
 /** A cor de uma pessoa: sempre a mesma para o mesmo id. */
 export function corDaPessoa(id: string): string {

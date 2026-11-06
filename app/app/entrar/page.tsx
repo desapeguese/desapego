@@ -9,15 +9,24 @@ export default async function Entrar() {
   return (
     <>
       <div className="entrada-notas">
-        <img className="entrada-nota--verso" src="/cedula-verso-v2.webp" width={916} height={414} alt="" />
+        {/* A da roda de pessoas (o verso) fica por cima. */}
+        <img className="entrada-nota--tras" src="/cedula-frente-v2.webp" width={916} height={414} alt="" />
         <img
-          className="entrada-nota--frente"
-          src="/cedula-frente-v2.webp"
+          className="entrada-nota--cima"
+          src="/cedula-verso-v2.webp"
           width={916}
           height={414}
-          alt="Cédula de 1 Desapego, com uma roda de pessoas de mãos dadas ao redor do símbolo da reciclagem"
+          alt="Cédula de 1 Desapego, com uma roda de pessoas de mãos dadas em volta de objetos trocados e o lema “a riqueza está em circular”"
         />
       </div>
+
+      <img
+        className="entrada-logo"
+        src="/logo-festival-cor-v1.png"
+        width={900}
+        height={313}
+        alt="Desapegue-se, o Festival dos Futuros que Queremos"
+      />
 
       <header className="entrada-texto">
         <p className="rotulo">moeda social Desapego</p>

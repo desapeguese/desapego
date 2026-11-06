@@ -8,14 +8,6 @@ import { buscarDestinatario, enviar, type Destinatario } from "./acoes";
 import { LeitorQr } from "./leitor";
 
 const VALOR_ALTO = 1000;
-// Atalhos com as cores das pessoas da roda.
-const ATALHOS = [
-  { valor: 5, cor: "#F29CC4" },
-  { valor: 10, cor: "#F5D25A" },
-  { valor: 20, cor: "#8CC3EC" },
-  { valor: 50, cor: "#F5A95C" },
-];
-
 const novaChave = () =>
   typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -136,7 +128,7 @@ export function FluxoEnviar(props: {
             setDestinatario(null);
           }}
         >
-          trocar
+          Trocar
         </button>
       </div>
 
@@ -160,24 +152,10 @@ export function FluxoEnviar(props: {
             />
           </div>
           <p className="nota-pe">
+            <span className="dica-valor">toque no número para digitar</span>
             {props.disponivel === null ? "sem limite" : `disponível: ${moeda(props.disponivel)}`}
           </p>
         </div>
-      </div>
-
-      <div className="atalhos" role="group" aria-label="Valores rápidos">
-        {ATALHOS.map((atalho) => (
-          <button
-            key={atalho.valor}
-            type="button"
-            className="atalho"
-            style={{ background: atalho.cor }}
-            disabled={props.disponivel !== null && atalho.valor > props.disponivel}
-            onClick={() => mudarValor(String(atalho.valor))}
-          >
-            {atalho.valor}
-          </button>
-        ))}
       </div>
 
       <label className="campo">

@@ -68,6 +68,13 @@ body {
 
 /* ---------- Cabeçalho ---------- */
 
+.logo-landing {
+  display: block;
+  width: min(78%, 400px);
+  height: auto;
+  margin: 0 auto 28px;
+}
+
 .sobrenome {
   margin: 0;
   font-size: clamp(0.62rem, 2.4vw, 0.72rem);
@@ -247,15 +254,17 @@ body {
 /* ==========================================================================
    App (/app e /termos): "papel-moeda".
 
-   A landing é a noite; o app é a cédula. Papel verde-claro, tinta verde,
-   numerais condensados, a faixa de guilhochê em tudo o que é dinheiro e as
-   cores das pessoas da roda. O desenho de referência está no canvas
+   A landing é a noite; o app é a cédula. Papel verde-claro, numerais
+   condensados e a faixa de guilhochê em tudo o que é dinheiro. As cores são as
+   do Manual de Identidade Visual do Festival (versão 2.0, set/2026): verde
+   escuro e verde médio como principais; rosa, laranja, roxo e azul, rebaixados,
+   nas pessoas da roda. O desenho de referência está no canvas
    "Carteira Desapego — identidade visual".
    ========================================================================== */
 
 body:has(.app) {
   background: #d9dfcf;
-  color: #143d20;
+  color: #1f3f10;
 }
 
 .app {
@@ -263,11 +272,12 @@ body:has(.app) {
   --papel-claro: #e8ecdf;
   --papel-faixa: #c5ceb8;
   --campo: #f1f4ea;
-  --tinta: #1f5a2e;
-  --tinta-escura: #143d20;
-  --tinta-suave: #2c5237;
-  --linha: rgba(31, 90, 46, 0.22);
-  --lima: #a9d86a;
+  --tinta: #34681a;
+  --tinta-escura: #1f3f10;
+  --tinta-suave: #2f5220;
+  --linha: rgba(52, 104, 26, 0.22);
+  --lima: #92c56e;
+  --alerta: #f5ac5c;
   --titulo: var(--fonte-titulo), "Arial Narrow", ui-sans-serif, sans-serif;
 
   width: 100%;
@@ -400,7 +410,7 @@ body:has(.app) {
   color: var(--tinta-escura) !important;
   font-family: var(--titulo);
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   line-height: 1;
   text-decoration: none;
 }
@@ -444,13 +454,13 @@ body:has(.app) {
   border: 1.5px solid var(--tinta);
   border-radius: 18px;
   background: var(--papel-claro);
-  box-shadow: 0 14px 28px -18px rgba(20, 61, 32, 0.55);
+  box-shadow: 0 14px 28px -18px rgba(31, 63, 16, 0.55);
 }
 
 .nota-faixa {
   flex: none;
   width: 46px;
-  border-right: 1px solid rgba(31, 90, 46, 0.35);
+  border-right: 1px solid rgba(52, 104, 26, 0.35);
 }
 
 .nota-corpo {
@@ -664,12 +674,12 @@ a.link {
 }
 
 .campo input::placeholder {
-  color: #5d7a64;
+  color: #55704a;
 }
 
 .campo input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(31, 90, 46, 0.3);
+  box-shadow: 0 0 0 3px rgba(52, 104, 26, 0.3);
 }
 
 .campo input:disabled {
@@ -719,7 +729,7 @@ a.link {
   padding: 10px 14px;
   border: 1.5px solid var(--tinta-escura);
   border-radius: 12px;
-  background: #f5d25a;
+  background: var(--alerta);
   font-weight: 600;
 }
 
@@ -738,7 +748,7 @@ a.link {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(31, 90, 46, 0.4);
+  background: rgba(52, 104, 26, 0.4);
 }
 
 .formulario-links {
@@ -775,15 +785,15 @@ a.link {
   width: min(78%, 330px);
   height: auto;
   border-radius: 4px;
-  box-shadow: 0 16px 28px -14px rgba(20, 61, 32, 0.7);
+  box-shadow: 0 16px 28px -14px rgba(31, 63, 16, 0.7);
 }
 
-.entrada-nota--verso {
+.entrada-nota--tras {
   top: 96px;
   transform: translateX(-55%) rotate(-5deg);
 }
 
-.entrada-nota--frente {
+.entrada-nota--cima {
   top: 34px;
   transform: translateX(-45%) rotate(4deg);
 }
@@ -1046,14 +1056,14 @@ a.link {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #8cc63f;
-  box-shadow: 0 0 0 5px rgba(140, 198, 63, 0.3);
+  background: #92c56e;
+  box-shadow: 0 0 0 5px rgba(146, 197, 110, 0.3);
   animation: pulso 1.8s ease-in-out infinite;
 }
 
 @keyframes pulso {
   50% {
-    box-shadow: 0 0 0 9px rgba(140, 198, 63, 0);
+    box-shadow: 0 0 0 9px rgba(146, 197, 110, 0);
   }
 }
 
@@ -1130,7 +1140,13 @@ a.link {
 
 .destinatario .link {
   flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--tinta);
+  border-radius: 999px;
+  background: var(--campo);
   font-size: 0.88rem;
+  text-decoration: none;
 }
 
 .nota-entrada {
@@ -1150,8 +1166,21 @@ a.link {
   font-variant-numeric: tabular-nums;
 }
 
+/* O traço embaixo diz "aqui se digita"; o contorno padrão de foco, em volta de
+   um numeral deste tamanho, pesa demais. */
+.nota-entrada {
+  border-bottom: 3px dashed rgba(52, 104, 26, 0.45);
+  border-radius: 0;
+}
+
+.app .nota-entrada:focus-visible {
+  outline: none;
+  border-bottom-style: solid;
+  border-bottom-color: var(--tinta);
+}
+
 .nota-entrada::placeholder {
-  color: rgba(31, 90, 46, 0.35);
+  color: rgba(52, 104, 26, 0.35);
 }
 
 .nota-entrada--medio {
@@ -1160,31 +1189,6 @@ a.link {
 
 .nota-entrada--longo {
   font-size: clamp(2.2rem, 11vw, 2.8rem);
-}
-
-.atalhos {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.atalho {
-  appearance: none;
-  height: 48px;
-  border: 1.5px solid var(--tinta);
-  border-radius: 10px;
-  color: var(--tinta-escura);
-  font-family: var(--titulo);
-  font-weight: 700;
-  font-size: 1.38rem;
-  cursor: pointer;
-}
-
-.atalho:disabled {
-  background: transparent !important;
-  border-style: dashed;
-  color: var(--tinta-suave);
-  cursor: not-allowed;
 }
 
 .rodape-acao {
@@ -1232,7 +1236,7 @@ a.link {
   border: 1.5px solid var(--tinta);
   border-radius: 18px;
   background: var(--papel-claro);
-  box-shadow: 0 14px 28px -18px rgba(20, 61, 32, 0.55);
+  box-shadow: 0 14px 28px -18px rgba(31, 63, 16, 0.55);
 }
 
 .canhoto .nota {
@@ -1389,7 +1393,7 @@ a.link {
   border-radius: 16px;
   background: var(--lima);
   color: var(--tinta-escura);
-  box-shadow: 0 16px 32px -14px rgba(20, 61, 32, 0.7);
+  box-shadow: 0 16px 32px -14px rgba(31, 63, 16, 0.7);
   animation: aviso-entra 260ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -1429,7 +1433,7 @@ a.link {
 .aviso-flutuante--alerta {
   justify-content: center;
   padding: 10px 16px;
-  background: #f5d25a;
+  background: var(--alerta);
   font-size: 0.92rem;
   font-weight: 700;
   text-align: center;
@@ -1522,7 +1526,7 @@ a.link {
 }
 
 .selo--alerta {
-  background: #f5d25a;
+  background: var(--alerta);
 }
 
 .selo--neutro {
@@ -1543,7 +1547,7 @@ a.link {
   padding: 12px 14px;
   border: 1.5px solid var(--tinta-escura);
   border-radius: 12px;
-  background: #f5d25a;
+  background: var(--alerta);
 }
 
 .auditoria {
@@ -1581,4 +1585,34 @@ a.link {
 .pessoa-link > span:last-child {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ---------- Logo do Festival ---------- */
+
+.logo-topo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: -4px;
+}
+
+.logo-topo img {
+  display: block;
+  width: auto;
+  height: 34px;
+}
+
+/* Na entrada a logo aparece grande, então a pequena do topo some. */
+.app:has(.entrada-notas) .logo-topo {
+  display: none;
+}
+
+.entrada-logo {
+  display: block;
+  width: min(72%, 270px);
+  height: auto;
+}
+
+.dica-valor {
+  display: block;
+  font-weight: 500;
 }
