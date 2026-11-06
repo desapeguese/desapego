@@ -62,6 +62,12 @@ export const auth = betterAuth({
 
   session: { expiresIn: 90 * DIA, updateAge: DIA },
 
+  // O proxy do Railway grava o IP do visitante em X-Real-IP, sobrescrevendo o
+  // que o cliente mandar. O X-Forwarded-For chega com vários endereços e o
+  // Better Auth o ignora; sem isto, o limite de tentativas trata todos os
+  // visitantes como um só.
+  advanced: { ipAddress: { ipAddressHeaders: ["x-real-ip"] } },
+
   user: {
     // `input: false`: nenhum destes campos pode ser definido pelo cliente no
     // cadastro. Mudam só por código do servidor.

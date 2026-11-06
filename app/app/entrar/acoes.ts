@@ -18,9 +18,9 @@ export async function pedirCodigo(emailBruto: string): Promise<{ erro: string }>
   }
 
   // Por IP e folgado: no evento, centenas de pessoas saem pelo mesmo Wi-Fi.
-  // Atrás do proxy do Railway, o primeiro endereço de x-forwarded-for é o
-  // cliente.
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "desconhecido";
+  // X-Real-IP é gravado pelo proxy do Railway e não pode ser forjado pelo
+  // cliente (ver lib/auth.ts).
+  const ip = (await headers()).get("x-real-ip")?.trim() || "desconhecido";
   if (!permitir(`ip:${ip}`, 60, 60 * 1000)) {
     return { erro: "Muitas tentativas. Espere um minuto e tente de novo." };
   }
