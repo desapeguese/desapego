@@ -5,6 +5,7 @@ import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { emailOTP } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
+import { cadastroAberto } from "./cadastro";
 import { db, schema } from "./db";
 import { enviarEmail } from "./email";
 import { permitir } from "./limite";
@@ -21,7 +22,7 @@ export function ehAdminInicial(email: string): boolean {
     .includes(email.toLowerCase());
 }
 
-export type FalhaCodigo = "MUITOS_CODIGOS" | "FALHA_ENVIO";
+export type FalhaCodigo = "MUITOS_CODIGOS" | "FALHA_ENVIO" | "CADASTRO_FECHADO";
 
 /**
  * O Better Auth engole qualquer erro de `sendVerificationOTP` e responde
@@ -83,7 +84,8 @@ export const auth = betterAuth({
   // Código por e-mail e Google caem na mesma conta quando o e-mail é o mesmo.
   account: { accountLinking: { enabled: true, trustedProviders: ["google"] } },
 
-  socialProviders: googleAtivo
+  // Com o cadastro fechado o Google também fica de fora: ele criaria contas.
+  socialProviders: googleAtivo && cadastroAberto
     ? {
         google: {
           clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -142,6 +144,11 @@ export const auth = betterAuth({
       storeOTP: "hashed",
       async sendVerificationOTP({ email, otp }) {
         const pedido = pedidoDeCodigo.getStore();
+        // Aqui dentro para valer também para quem chamar a rota HTTP direto.
+        if (!cadastroAberto && !ehAdminInicial(email)) {
+          if (pedido) pedido.falha = "CADASTRO_FECHADO";
+          return;
+        }
         // Por endereço, e aqui dentro para valer também para quem chamar a
         // rota HTTP direto: no máximo 4 códigos a cada 10 minutos.
         if (!permitir(`codigo:${email}`, 4, 10 * 60 * 1000)) {
@@ -167,3 +174,5 @@ export const auth = betterAuth({
     nextCookies(),
   ],
 });
+
+export { cadastroAberto };

@@ -7,6 +7,7 @@ import { permitir } from "@/lib/limite";
 const MENSAGEM = {
   MUITOS_CODIGOS: "Muitos códigos pedidos para este e-mail. Espere alguns minutos.",
   FALHA_ENVIO: "Não conseguimos enviar o e-mail agora. Tente de novo em instantes.",
+  CADASTRO_FECHADO: "O cadastro abre em breve. Por enquanto só a equipe consegue entrar.",
 } as const;
 
 /** Envia o código de login. `erro` vazio = enviado. */

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cadastroAberto } from "@/lib/cadastro";
 
 export default function Home() {
   return (
@@ -54,9 +55,20 @@ export default function Home() {
       </p>
 
       <div className="chamada">
-        <Link className="botao" href="/app">
-          Acessar sua conta
-        </Link>
+        {cadastroAberto ? (
+          <Link className="botao" href="/app">
+            Acessar sua conta
+          </Link>
+        ) : (
+          <>
+            <button type="button" className="botao" disabled aria-describedby="aviso-conta">
+              Acessar sua conta
+            </button>
+            <p className="aviso" id="aviso-conta">
+              Em breve
+            </p>
+          </>
+        )}
       </div>
 
       <footer className="rodape">

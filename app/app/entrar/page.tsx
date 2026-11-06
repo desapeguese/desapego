@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { googleAtivo } from "@/lib/auth";
+import { cadastroAberto, googleAtivo } from "@/lib/auth";
 import { pessoaLogada } from "@/lib/sessao";
 import { FormularioEntrar } from "./formulario";
 
@@ -31,13 +31,19 @@ export default async function Entrar() {
       <header className="entrada-texto">
         <p className="rotulo">moeda social Desapego</p>
         <h1 className="app-titulo" style={{ textAlign: "left" }}>A riqueza está em circular</h1>
-        <p>
-          Entre sem senha: enviamos um código para o seu e-mail. Se ainda não
-          tem carteira, ela nasce agora.
-        </p>
+        {cadastroAberto ? (
+          <p>
+            Entre sem senha: enviamos um código para o seu e-mail. Se ainda não
+            tem carteira, ela nasce agora.
+          </p>
+        ) : (
+          <p className="feito">
+            O cadastro abre em breve. Por enquanto só a equipe do Festival consegue entrar.
+          </p>
+        )}
       </header>
 
-      <FormularioEntrar googleAtivo={googleAtivo} />
+      <FormularioEntrar googleAtivo={googleAtivo && cadastroAberto} />
     </>
   );
 }
