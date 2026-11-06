@@ -60,3 +60,16 @@ export function avisarDadosAlterados(emailAntigo: string, campos: string[], oper
       "Se não foi, procure a organização do Festival o quanto antes.",
   }).catch((erro) => console.error("[aviso de dados alterados] e-mail não enviado:", erro));
 }
+
+const NOME_PERFIL: Record<string, string> = { usuario: "Usuário", caixa: "Caixa", admin: "Admin" };
+
+/** Avisa a pessoa de que o perfil dela mudou. */
+export function avisarPerfilAlterado(email: string, de: string, para: string, operadorNome: string) {
+  enviarEmail({
+    para: email,
+    assunto: "Seu perfil na Moeda Desapego mudou",
+    texto:
+      `${operadorNome} alterou o seu perfil na Moeda Desapego de ${NOME_PERFIL[de] ?? de} para ${NOME_PERFIL[para] ?? para}.\n\n` +
+      "Se você não esperava essa mudança, procure a organização do Festival.",
+  }).catch((erro) => console.error("[aviso de perfil alterado] e-mail não enviado:", erro));
+}

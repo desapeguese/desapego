@@ -6,10 +6,10 @@ Desapegue-se.
 Live: <https://desapego.festivaldesapeguese.com.br>
 
 O escopo completo está em [docs/PRD.md](docs/PRD.md). Hoje o repositório tem a
-landing e as **Etapas 1 a 3** do app: cadastro, login sem senha, perfis, o
-livro de transações, a carteira (saldo, histórico, receber por QR, enviar,
-avisos em tempo real, PWA instalável) e o Caixa (pessoas, Pagar, Receber, cédulas,
-estorno, registro da conta). Admin, passkey e 2FA são as próximas etapas.
+landing e as **Etapas 1 a 4** do app: cadastro, login sem senha, perfis, o
+livro de transações, a carteira, o Caixa e o Admin (perfis, limites,
+indicadores, relatório de transações com CSV e registro de auditoria). Faltam
+passkey e 2FA, edições do festival e o gráfico por período.
 
 ## Stack
 
@@ -102,6 +102,13 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 - **Trocar o e-mail de alguém troca a chave de login:** as sessões e os
   vínculos (Google) antigos são apagados, o e-mail novo só vale depois do
   primeiro login com código, e o endereço antigo é avisado.
+- **Perfis e limites só mudam por um Admin**, nunca o próprio perfil, e o
+  sistema não fica sem Admin ativo. Quem está em `ADMIN_EMAILS` é Admin pela
+  configuração do servidor e não pode ser rebaixado pela tela.
+- **Os dias do relatório são os do horário de Brasília**, não UTC.
+- **O CSV neutraliza fórmulas:** células que começam com `=`, `+`, `-` ou `@`
+  ganham um apóstrofo, para uma descrição maliciosa não ser executada pelo
+  Excel de quem abrir o arquivo.
 - **Ninguém é apagado.** Desativar bloqueia login e transações e preserva
   saldo e histórico.
 - **Papel, `ativo` e aceite dos termos nunca vêm do cliente.** São lidos do
@@ -128,6 +135,7 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/globals.css` | Every style. No CSS framework. A landing é escura; o app (`.app`) é claro, ver “Identidade visual”. |
 | `app/app/(carteira)/` | Páginas que exigem login: carteira, `receber/`, `enviar/`, `historico/`, `transacao/[id]/`, `conta/`. |
 | `app/app/(carteira)/caixa/` | O Caixa, só para os perfis Caixa e Admin: painel e busca, `ler/` (QR), `nova/`, `pessoa/[id]/` (ficha, `editar/`, `operacao/[tipo]/`) e `transacao/[id]/` (com estorno). |
+| `app/app/(carteira)/admin/` | Só para Admin: painel com indicadores e limite padrão do Caixa, `relatorio/` (filtros, lista e `csv/`) e `auditoria/`. Perfil e limite individual ficam na ficha da pessoa, no Caixa. |
 | `app/app/pecas.tsx`, `app/fontes.ts` | Peças visuais compartilhadas (a nota, avatares, barra inferior) e as fontes do app. |
 | `app/app/entrar/`, `app/app/cadastro/` | Login e primeiro acesso. |
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
@@ -137,11 +145,12 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
 | `lib/pessoas.ts` | Gestão de pessoas pelo Caixa e Admin: busca, cadastro, edição, desativação e auditoria, com as permissões por perfil. |
+| `lib/relatorios.ts` | Indicadores, lista filtrada de transações e a montagem do CSV. Só leitura. |
 | `lib/avisos.ts` | Avisos de movimento e de troca de dados, na tela e por e-mail. |
 | `lib/auth.ts`, `lib/sessao.ts` | Configuração do login e leitura da pessoa logada. |
 | `lib/db/schema.ts` | Esquema do banco. |
 | `drizzle/` | Migrações SQL, aplicadas por `scripts/migrar.mjs`. |
-| `tests/` | Testes do livro e da gestão de pessoas. |
+| `tests/` | Testes do livro, da gestão de pessoas e dos relatórios. |
 | `app/icon.png` | Favicon: o símbolo do Festival. |
 | `public/cedula-*-v2.webp` | The 2026 cédula artwork. Suffixed because the cache header is `immutable` — a new design needs a new filename, never an overwrite. |
 | `public/og-v2.jpg` | 1200×630 social preview card, built from the cédula front. |
@@ -200,7 +209,7 @@ railway up
 
 ## Not here yet
 
-- Etapas 4 e 5 do [PRD](docs/PRD.md): Admin (perfis, limites, relatórios), passkey e 2FA, edições do festival.
+- Etapa 5 do [PRD](docs/PRD.md): passkey e 2FA, edições do festival (e o filtro por edição no relatório) e o gráfico por período.
 - **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
   revisão jurídica. Ao publicar o texto final, mude `VERSAO_TERMOS` em
   `lib/sessao.ts`: é ela que fica gravada em cada aceite.

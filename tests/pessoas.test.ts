@@ -10,6 +10,12 @@ import {
   buscarPessoas,
   criarPessoa,
   definirAtivo,
+  definirLimite,
+  definirLimitePadraoCaixa,
+  definirPapel,
+  listarAuditoriaGlobal,
+  listarEquipe,
+  obterLimitePadraoCaixa,
   editarPessoa,
   ErroPessoa,
   listarAuditoria,
@@ -190,5 +196,90 @@ describe("transações vistas pela equipe", () => {
     expect(depois.estornadaPor).toBe(estorno.id);
     expect(podeEstornar(admin, depois)).toBe(false);
     expect(podeEstornar(admin, (await obterTransacaoCompleta(db, estorno.id))!)).toBe(false);
+  });
+});
+
+describe("perfis (só Admin)", () => {
+  it("promove e rebaixa, com registro", async () => {
+    expect(await definirPapel(db, admin, "ana", "caixa")).toMatchObject({ de: "usuario", para: "caixa", email: "ana@teste.br" });
+    expect((await obterPessoa(db, admin, "ana"))!.papel).toBe("caixa");
+    await definirPapel(db, admin, "ana", "admin");
+    await definirPapel(db, admin, "ana", "usuario");
+    const log = await listarAuditoria(db, admin, "ana");
+    expect(log.map((l) => l.detalhes)).toEqual([
+      { de: "admin", para: "usuario" },
+      { de: "caixa", para: "admin" },
+      { de: "usuario", para: "caixa" },
+    ]);
+  });
+
+  it("quem vira Caixa passa a ter o limite do perfil; rebaixado negativo não envia", async () => {
+    await definirPapel(db, admin, "ana", "caixa");
+    await transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "dar", valor: 300, descricao: "x", chaveIdempotencia: "k1" });
+    await definirPapel(db, admin, "ana", "usuario");
+    expect((await obterPessoa(db, admin, "ana"))!.saldo).toBe(-300);
+    await expect(
+      transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 1, chaveIdempotencia: "k2" }),
+    ).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
+  });
+
+  it("recusa Caixa, o próprio perfil, perfil inválido e o último Admin", async () => {
+    await espera("SEM_PERMISSAO", definirPapel(db, caixa, "ana", "caixa"));
+    await espera("PROPRIA_CONTA", definirPapel(db, admin, "admin", "usuario"));
+    await espera("PAPEL_INVALIDO", definirPapel(db, admin, "ana", "dono" as schema.Papel));
+    await espera("NAO_ENCONTRADA", definirPapel(db, admin, "fantasma", "caixa"));
+    // "admin" é o único Admin: nem outro Admin (hipotético) o rebaixa.
+    await espera("ULTIMO_ADMIN", definirPapel(db, { id: "outro", papel: "admin" }, "admin", "caixa"));
+    await pessoa("admin2", "admin");
+    await definirPapel(db, { id: "admin2", papel: "admin" }, "admin", "caixa");
+  });
+});
+
+describe("limites (só Admin)", () => {
+  const dar = (operadorId: string, valor: number, chaveIdempotencia: string) =>
+    transferir(db, { operadorId, contraparteId: "ana", tipo: "dar", valor, descricao: "x", chaveIdempotencia });
+
+  it("o padrão do Caixa muda para todos os Caixas sem limite próprio", async () => {
+    expect(await obterLimitePadraoCaixa(db)).toBe(1000);
+    await definirLimitePadraoCaixa(db, admin, 50);
+    expect(await obterLimitePadraoCaixa(db)).toBe(50);
+    await expect(dar("caixa", 51, "k1")).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
+    await dar("caixa", 50, "k2");
+    await definirLimitePadraoCaixa(db, admin, 60);
+    await dar("caixa", 10, "k3");
+    const [registro] = await listarAuditoriaGlobal(db, admin);
+    expect(registro).toMatchObject({ acao: "limite_padrao_caixa", detalhes: { de: 50, para: 60 }, alvoId: null, atorNome: "admin da Silva" });
+  });
+
+  it("limite individual vale para Caixa e para usuário, e volta ao padrão com null", async () => {
+    await definirLimite(db, admin, "caixa", 2000);
+    await dar("caixa", 2000, "k1");
+    await definirLimite(db, admin, "ana", 30);
+    expect((await obterPessoa(db, admin, "ana"))!.limiteNegativo).toBe(30);
+    await transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 2030, chaveIdempotencia: "k2" });
+    await definirLimite(db, admin, "ana", null);
+    await expect(
+      transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 1, chaveIdempotencia: "k3" }),
+    ).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
+    expect((await listarAuditoria(db, admin, "ana")).map((l) => l.detalhes)).toEqual([
+      { de: 30, para: null },
+      { de: null, para: 30 },
+    ]);
+  });
+
+  it("recusa valores inválidos, Admin como alvo e quem não é Admin", async () => {
+    for (const valor of [-1, 1.5, 1_000_001, Number.NaN]) {
+      await espera("LIMITE_INVALIDO", definirLimite(db, admin, "ana", valor));
+      await espera("LIMITE_INVALIDO", definirLimitePadraoCaixa(db, admin, valor));
+    }
+    await espera("LIMITE_INVALIDO", definirLimite(db, admin, "admin", 10));
+    await espera("SEM_PERMISSAO", definirLimite(db, caixa, "ana", 10));
+    await espera("SEM_PERMISSAO", definirLimitePadraoCaixa(db, caixa, 10));
+    await espera("SEM_PERMISSAO", listarAuditoriaGlobal(db, caixa));
+    await espera("SEM_PERMISSAO", listarEquipe(db, caixa));
+  });
+
+  it("lista a equipe", async () => {
+    expect((await listarEquipe(db, admin)).map((p) => p.id).sort()).toEqual(["admin", "caixa"]);
   });
 });

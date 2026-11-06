@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import type { Banco } from "./db";
-import { account, auditoria, conta, session, user, type Papel } from "./db/schema";
+import { account, auditoria, configuracao, conta, session, user, PAPEIS, type Papel } from "./db/schema";
+import { CHAVE_LIMITE_CAIXA, LIMITE_PADRAO_CAIXA } from "./ledger";
 
 /**
  * Gestão de pessoas pelo Caixa e pelo Admin. Como o livro (lib/ledger.ts), este
@@ -19,7 +20,9 @@ export type CodigoErroPessoa =
   | "EMAIL_EM_USO"
   | "TELEFONE_INVALIDO"
   | "ULTIMO_ADMIN"
-  | "PROPRIA_CONTA";
+  | "PROPRIA_CONTA"
+  | "PAPEL_INVALIDO"
+  | "LIMITE_INVALIDO";
 
 export class ErroPessoa extends Error {
   constructor(
@@ -100,6 +103,8 @@ const colunas = {
   criadaEm: user.createdAt,
   termosAceitosEm: user.termosAceitosEm,
   saldo: sql<number>`coalesce(${conta.saldo}, 0)`.mapWith(Number),
+  /** Limite individual; nulo = o padrão do perfil. */
+  limiteNegativo: conta.limiteNegativo,
   numero: sql<number>`coalesce(${conta.numero}, 0)`.mapWith(Number),
 };
 
@@ -308,4 +313,156 @@ export async function definirAtivo(db: Banco, ator: Ator, alvoId: string, ativo:
       detalhes: {},
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Só Admin: perfis e limites
+// ---------------------------------------------------------------------------
+
+function exigirAdmin(ator: Ator) {
+  if (ator.papel !== "admin") throw new ErroPessoa("SEM_PERMISSAO", "Restrito a Admin.");
+}
+
+const LIMITE_MAXIMO = 1_000_000;
+
+function validarLimite(valor: number) {
+  if (!Number.isInteger(valor) || valor < 0 || valor > LIMITE_MAXIMO) {
+    throw new ErroPessoa("LIMITE_INVALIDO", "O limite precisa ser um número inteiro, de 0 a 1.000.000.");
+  }
+}
+
+/**
+ * Promove ou rebaixa. Ninguém muda o próprio perfil (um Admin não se tranca
+ * para fora por engano) e o sistema nunca fica sem Admin ativo. Rebaixar quem
+ * está negativo é permitido: a conta só fica impedida de enviar até voltar ao
+ * limite novo.
+ */
+export async function definirPapel(
+  db: Banco,
+  ator: Ator,
+  alvoId: string,
+  papel: Papel,
+): Promise<{ de: Papel; para: Papel; email: string }> {
+  exigirAdmin(ator);
+  if (!PAPEIS.includes(papel)) throw new ErroPessoa("PAPEL_INVALIDO", "Perfil inválido.");
+  if (ator.id === alvoId) throw new ErroPessoa("PROPRIA_CONTA", "Você não pode mudar o próprio perfil.");
+
+  return db.transaction(async (tx) => {
+    const [alvo] = await tx.select().from(user).where(eq(user.id, alvoId)).for("update");
+    if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
+    if (alvo.papel === papel) return { de: alvo.papel, para: papel, email: alvo.email };
+
+    if (alvo.papel === "admin" && alvo.ativo) {
+      const [{ outros }] = await tx
+        .select({ outros: sql<number>`count(*)::int` })
+        .from(user)
+        .where(and(eq(user.papel, "admin"), eq(user.ativo, true), ne(user.id, alvoId)));
+      if (outros === 0) throw new ErroPessoa("ULTIMO_ADMIN", "O sistema não pode ficar sem Admin.");
+    }
+
+    await tx.update(user).set({ papel, updatedAt: new Date() }).where(eq(user.id, alvoId));
+    await tx.insert(auditoria).values({
+      atorId: ator.id,
+      alvoId,
+      acao: "papel_alterado",
+      detalhes: { de: alvo.papel, para: papel },
+    });
+    return { de: alvo.papel, para: papel, email: alvo.email };
+  });
+}
+
+/**
+ * Limite negativo individual: um Caixa com limite próprio ou um usuário com
+ * crédito especial. `null` volta ao padrão do perfil.
+ */
+export async function definirLimite(db: Banco, ator: Ator, alvoId: string, limite: number | null): Promise<void> {
+  exigirAdmin(ator);
+  if (limite !== null) validarLimite(limite);
+
+  await db.transaction(async (tx) => {
+    const [alvo] = await tx.select({ papel: user.papel }).from(user).where(eq(user.id, alvoId));
+    if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
+    if (alvo.papel === "admin") {
+      throw new ErroPessoa("LIMITE_INVALIDO", "Admin não tem limite negativo.");
+    }
+    await tx.insert(conta).values({ usuarioId: alvoId }).onConflictDoNothing();
+    const [atual] = await tx.select().from(conta).where(eq(conta.usuarioId, alvoId)).for("update");
+    if (atual.limiteNegativo === limite) return;
+
+    await tx.update(conta).set({ limiteNegativo: limite }).where(eq(conta.usuarioId, alvoId));
+    await tx.insert(auditoria).values({
+      atorId: ator.id,
+      alvoId,
+      acao: "limite_alterado",
+      detalhes: { de: atual.limiteNegativo, para: limite },
+    });
+  });
+}
+
+export async function obterLimitePadraoCaixa(db: Banco): Promise<number> {
+  const [linha] = await db
+    .select({ valor: configuracao.valor })
+    .from(configuracao)
+    .where(eq(configuracao.chave, CHAVE_LIMITE_CAIXA));
+  return linha?.valor ?? LIMITE_PADRAO_CAIXA;
+}
+
+/** O limite de todo Caixa que não tem limite individual. */
+export async function definirLimitePadraoCaixa(db: Banco, ator: Ator, valor: number): Promise<void> {
+  exigirAdmin(ator);
+  validarLimite(valor);
+  await db.transaction(async (tx) => {
+    const anterior = await obterLimitePadraoCaixa(tx as unknown as Banco);
+    if (anterior === valor) return;
+    await tx
+      .insert(configuracao)
+      .values({ chave: CHAVE_LIMITE_CAIXA, valor })
+      .onConflictDoUpdate({ target: configuracao.chave, set: { valor } });
+    await tx.insert(auditoria).values({
+      atorId: ator.id,
+      acao: "limite_padrao_caixa",
+      detalhes: { de: anterior, para: valor },
+    });
+  });
+}
+
+/** Caixas e Admins, para a tela de equipe. */
+export async function listarEquipe(db: Banco, ator: Ator) {
+  exigirAdmin(ator);
+  return db
+    .select(colunas)
+    .from(user)
+    .leftJoin(conta, eq(conta.usuarioId, user.id))
+    .where(ne(user.papel, "usuario"))
+    .orderBy(user.papel, user.name);
+}
+
+export type LinhaAuditoriaGlobal = LinhaAuditoria & { alvoId: string | null; alvoNome: string | null };
+
+/** Tudo o que foi registrado, de todas as contas, do mais recente para o mais antigo. */
+export async function listarAuditoriaGlobal(
+  db: Banco,
+  ator: Ator,
+  opcoes: { limite?: number; pular?: number } = {},
+): Promise<LinhaAuditoriaGlobal[]> {
+  exigirAdmin(ator);
+  const resultado = await db.execute(sql`
+    select a.id, a.criada_em, a.acao, a.detalhes, a.alvo_id,
+           quem.name as ator_nome, alvo.name as alvo_nome
+    from ${auditoria} a
+    left join ${user} quem on quem.id = a.ator_id
+    left join ${user} alvo on alvo.id = a.alvo_id
+    order by a.criada_em desc, a.id desc
+    limit ${Math.min(Math.max(opcoes.limite ?? 50, 1), 200)} offset ${Math.max(opcoes.pular ?? 0, 0)}
+  `);
+  const linhas = ("rows" in resultado ? resultado.rows : resultado) as unknown as Record<string, never>[];
+  return linhas.map((l) => ({
+    id: l.id,
+    criadaEm: new Date(l.criada_em),
+    acao: l.acao,
+    detalhes: (l.detalhes ?? {}) as Record<string, unknown>,
+    atorNome: l.ator_nome,
+    alvoId: l.alvo_id,
+    alvoNome: l.alvo_nome,
+  }));
 }

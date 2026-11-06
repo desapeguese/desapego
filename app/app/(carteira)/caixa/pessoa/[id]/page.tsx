@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { corDaPessoa, dataHora, iniciais, inteiro, numeroCurto, numeroDeSerie } from "@/lib/formato";
 import { listarExtrato } from "@/lib/ledger";
-import { listarAuditoria, obterPessoa, podeGerenciar, type LinhaAuditoria } from "@/lib/pessoas";
+import { listarAuditoria, obterLimitePadraoCaixa, obterPessoa, podeGerenciar } from "@/lib/pessoas";
 import { Nota, tamanhoDoNumero } from "../../../../pecas";
 import { Extrato } from "../../../extrato";
 import { Topo } from "../../../topo";
+import { mudarLimite, mudarPapel } from "../../../admin/acoes";
 import { alternarAtivo } from "../../acoes";
+import { descreverAuditoria } from "../../auditoria-texto";
 import { exigirEquipe, NOME_PAPEL, VOLTAR_AO_CAIXA } from "../../equipe";
 
 const AVISOS: Record<string, string> = {
@@ -17,37 +19,13 @@ const AVISOS: Record<string, string> = {
   reativada: "Conta reativada.",
   "erro:ULTIMO_ADMIN": "Não foi possível: o sistema não pode ficar sem Admin.",
   "erro:SEM_PERMISSAO": "Não foi possível: só um Admin pode fazer isso.",
-  "erro:PROPRIA_CONTA": "Você não pode desativar a própria conta.",
+  "erro:PROPRIA_CONTA": "Você não pode fazer isso na própria conta.",
+  papel: "Perfil atualizado.",
+  limite: "Limite atualizado.",
+  "erro:LIMITE_INVALIDO": "Limite inválido: use um número inteiro de 0 a 1.000.000.",
+  "erro:PAPEL_INVALIDO": "Perfil inválido.",
+  "erro:ADMIN_INICIAL": "Este e-mail é Admin pela configuração do servidor (ADMIN_EMAILS) e não pode ser rebaixado por aqui.",
 };
-
-const CAMPOS: Record<string, string> = { nome: "nome", email: "e-mail", telefone: "telefone" };
-
-function descreverAuditoria(linha: LinhaAuditoria): string {
-  const d = linha.detalhes;
-  switch (linha.acao) {
-    case "cadastrada_pelo_caixa":
-      return "Cadastrada no balcão";
-    case "termos_aceitos":
-      return `Aceitou os termos (versão ${String(d.versao ?? "?")})`;
-    case "desativada":
-      return "Conta desativada";
-    case "reativada":
-      return "Conta reativada";
-    case "papel_alterado":
-      return `Perfil alterado de ${String(d.de)} para ${String(d.para)}`;
-    case "estorno":
-      return `Estorno feito (${String(d.motivo ?? "sem motivo")})`;
-    case "dados_alterados":
-      return (
-        "Dados alterados: " +
-        Object.entries(d as Record<string, { de: string | null; para: string | null }>)
-          .map(([campo, v]) => `${CAMPOS[campo] ?? campo} de “${v.de ?? "vazio"}” para “${v.para ?? "vazio"}”`)
-          .join("; ")
-      );
-    default:
-      return linha.acao;
-  }
-}
 
 export default async function Pessoa({
   params,
@@ -62,10 +40,12 @@ export default async function Pessoa({
   const pessoa = await obterPessoa(db, ator, id);
   if (!pessoa) notFound();
 
-  const [{ linhas, proximo }, auditoria] = await Promise.all([
+  const [{ linhas, proximo }, auditoria, limitePadraoCaixa] = await Promise.all([
     listarExtrato(db, id, { limite: 10, cursor: cursor ?? null }),
     listarAuditoria(db, ator, id),
+    obterLimitePadraoCaixa(db),
   ]);
+  const limiteDoPerfil = pessoa.papel === "caixa" ? limitePadraoCaixa : 0;
 
   const nome = pessoa.nome || "Sem nome";
   const papel = NOME_PAPEL[pessoa.papel];
@@ -164,6 +144,56 @@ export default async function Pessoa({
           </ul>
         )}
       </section>
+
+      {ator.papel === "admin" && (
+        <section className="cartao formulario" aria-labelledby="titulo-admin">
+          <h2 className="secao-titulo" id="titulo-admin">Administração</h2>
+
+          {ehAPropria ? (
+            <p className="mensagem">Você não pode mudar o próprio perfil. Peça a outro Admin.</p>
+          ) : (
+            <form className="busca" action={mudarPapel}>
+              <input type="hidden" name="id" value={id} />
+              <label className="campo">
+                <span>Perfil</span>
+                <select name="papel" defaultValue={pessoa.papel}>
+                  <option value="usuario">Usuário</option>
+                  <option value="caixa">Caixa</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <button className="botao botao--contorno" type="submit">Salvar</button>
+            </form>
+          )}
+
+          {pessoa.papel === "admin" ? (
+            <p className="mensagem">Admin não tem limite negativo.</p>
+          ) : (
+            <>
+              <form className="busca" action={mudarLimite}>
+                <input type="hidden" name="id" value={id} />
+                <label className="campo">
+                  <span>Limite negativo (D$)</span>
+                  <input
+                    name="limite"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    placeholder={`padrão: ${limiteDoPerfil}`}
+                    defaultValue={pessoa.limiteNegativo ?? ""}
+                  />
+                </label>
+                <button className="botao botao--contorno" type="submit">Salvar</button>
+              </form>
+              <p className="mensagem">
+                {pessoa.limiteNegativo === null
+                  ? `Usando o padrão do perfil: pode ficar até D$ ${limiteDoPerfil} negativo.`
+                  : `Limite individual: pode ficar até D$ ${pessoa.limiteNegativo} negativo. Deixe em branco para voltar ao padrão (D$ ${limiteDoPerfil}).`}
+              </p>
+            </>
+          )}
+        </section>
+      )}
 
       {gerencia && (
         <div className="rodape-acao">

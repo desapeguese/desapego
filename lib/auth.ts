@@ -5,22 +5,13 @@ import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { emailOTP } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
-import { cadastroAberto } from "./cadastro";
+import { cadastroAberto, ehAdminInicial } from "./cadastro";
 import { db, schema } from "./db";
 import { enviarEmail } from "./email";
 import { permitir } from "./limite";
 
 const DIA = 60 * 60 * 24;
 const MINUTOS_CODIGO = 10;
-
-/** E-mails que nascem (ou viram, no próximo acesso) Admin. Ver lib/sessao.ts. */
-export function ehAdminInicial(email: string): boolean {
-  return (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(email.toLowerCase());
-}
 
 export type FalhaCodigo = "MUITOS_CODIGOS" | "FALHA_ENVIO" | "CADASTRO_FECHADO";
 
@@ -175,4 +166,4 @@ export const auth = betterAuth({
   ],
 });
 
-export { cadastroAberto };
+export { cadastroAberto, ehAdminInicial };

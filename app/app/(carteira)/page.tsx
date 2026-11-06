@@ -71,9 +71,16 @@ export default async function Carteira() {
       </nav>
 
       {pessoa.papel !== "usuario" && (
-        <Link className="botao botao--contorno" href="/app/caixa">
-          Abrir o Caixa
-        </Link>
+        <nav className="acoes" aria-label="Equipe">
+          <Link className="botao botao--contorno" href="/app/caixa">
+            Caixa
+          </Link>
+          {pessoa.papel === "admin" && (
+            <Link className="botao botao--contorno" href="/app/admin">
+              Admin
+            </Link>
+          )}
+        </nav>
       )}
 
       <section aria-labelledby="titulo-ultimas">

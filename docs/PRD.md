@@ -246,7 +246,7 @@ A ordem prioriza o que o balcão precisa.
 | 1. Base ✅ | Banco, cadastro, login por e-mail e Google, perfis, livro de transações com soma zero e limites | Contas existem e o núcleo é confiável |
 | 2. Carteira ✅ | Saldo, histórico, Receber (QR), Enviar (câmera e e-mail), tempo real, PWA instalável | Pessoas trocam entre si |
 | 3. Caixa ✅ | Busca e gestão de usuários, Dar/Tomar, cédulas, estorno, log de auditoria, e-mails de aviso | Balcão do evento operável |
-| 4. Admin | Perfis e limites, lista de transações com CSV, indicadores | Organização audita |
+| 4. Admin ✅ | Perfis e limites, lista de transações com CSV, indicadores | Organização audita |
 | 5. Complementos | Passkey e 2FA (com TOTP), edições do festival, gráfico por período | Escopo completo da v1 |
 
 O próximo evento é em 29/11/2026. O cadastro abre assim que o app subir, sem depender do evento. Se o prazo apertar, a etapa 5 pode ir ao ar depois sem impedir a operação.
