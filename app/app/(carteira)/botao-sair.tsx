@@ -16,8 +16,8 @@ export function BotaoSair() {
   }
 
   return (
-    <button type="button" className="link" onClick={sair} disabled={saindo}>
-      {saindo ? "Saindo…" : "Sair"}
+    <button type="button" className="botao botao--contorno" onClick={sair} disabled={saindo}>
+      {saindo ? "Saindo…" : "Sair da conta"}
     </button>
   );
 }

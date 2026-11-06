@@ -9,6 +9,8 @@ import {
   CHAVE_LIMITE_CAIXA,
   ErroLedger,
   estornar,
+  listarExtrato,
+  obterTransacaoDe,
   obterSaldo,
   transferir,
   verificarIntegridade,
@@ -139,7 +141,7 @@ describe("limites", () => {
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 1000, descricao: "x" });
     await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 1, descricao: "x" }));
     await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "deposito_cedula", valor: 1 }));
-    expect(await obterSaldo(db, "caixa")).toEqual({ saldo: -1000, limite: 1000, disponivel: 0 });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: -1000, limite: 1000, disponivel: 0 });
   });
 
   it("o padrão global do Caixa é configurável", async () => {
@@ -161,7 +163,7 @@ describe("limites", () => {
 
   it("Admin não tem limite", async () => {
     await mover({ operadorId: "admin", contraparteId: "ana", tipo: "dar", valor: 1_000_000, descricao: "x" });
-    expect(await obterSaldo(db, "admin")).toEqual({ saldo: -1_000_000, limite: null, disponivel: null });
+    expect(await obterSaldo(db, "admin")).toMatchObject({ saldo: -1_000_000, limite: null, disponivel: null });
   });
 
   it("Tomar que deixa a pessoa negativa pede confirmação e depois passa", async () => {
@@ -260,5 +262,53 @@ describe("estorno", () => {
     const original = await dar();
     await espera("DESCRICAO_OBRIGATORIA", estorno("caixa", original.id, " "));
     await espera("TRANSACAO_NAO_ENCONTRADA", estorno("caixa", "00000000-0000-0000-0000-000000000000"));
+  });
+});
+
+describe("extrato", () => {
+  it("mostra entradas e saídas com sinal, contraparte e ordem do mais recente", async () => {
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 50, descricao: "bicicleta" });
+    await mover({ operadorId: "ana", contraparteId: "bia", tipo: "envio", valor: 20, descricao: "carona" });
+    const { linhas, proximo } = await listarExtrato(db, "ana");
+    expect(proximo).toBeNull();
+    expect(linhas.map((l) => [l.tipo, l.valor, l.contraparteNome, l.descricao])).toEqual([
+      ["envio", -20, "bia", "carona"],
+      ["dar", 50, "caixa", "bicicleta"],
+    ]);
+  });
+
+  it("pagina sem pular nem repetir, e não mostra transações alheias", async () => {
+    for (let i = 1; i <= 7; i++) {
+      await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: i, descricao: `item ${i}` });
+    }
+    await mover({ operadorId: "caixa", contraparteId: "bia", tipo: "dar", valor: 99, descricao: "alheia" });
+
+    const vistos: number[] = [];
+    let cursor: string | null = null;
+    do {
+      const pagina = await listarExtrato(db, "ana", { limite: 3, cursor });
+      vistos.push(...pagina.linhas.map((l) => l.valor));
+      cursor = pagina.proximo;
+    } while (cursor);
+    expect(vistos).toEqual([7, 6, 5, 4, 3, 2, 1]);
+    expect(await listarExtrato(db, "ana", { cursor: "lixo" })).toEqual({ linhas: [], proximo: null });
+  });
+
+  it("só as duas pontas enxergam o detalhe de uma transação", async () => {
+    const { transacao } = await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 5, descricao: "x" });
+    expect(await obterTransacaoDe(db, "ana", transacao.id)).toMatchObject({ valor: 5, contraparteNome: "caixa" });
+    expect(await obterTransacaoDe(db, "caixa", transacao.id)).toMatchObject({ valor: -5, contraparteNome: "ana" });
+    expect(await obterTransacaoDe(db, "bia", transacao.id)).toBeNull();
+    expect(await obterTransacaoDe(db, "ana", "não-é-uuid")).toBeNull();
+  });
+});
+
+describe("número da conta", () => {
+  it("é sequencial, único e existe mesmo para quem nunca transacionou", async () => {
+    const numeros = [];
+    for (const id of ["ana", "bia", "caixa", "admin"]) numeros.push((await obterSaldo(db, id)).numero);
+    expect(new Set(numeros).size).toBe(4);
+    expect(numeros.every((n) => Number.isInteger(n) && n > 0)).toBe(true);
+    expect((await obterSaldo(db, "ana")).numero).toBe(numeros[0]);
   });
 });

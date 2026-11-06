@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { fontesDoApp } from "../fontes";
+
+export const viewport = { themeColor: "#D9DFCF", colorScheme: "light" as const };
 
 export const metadata: Metadata = {
   title: "Termos de uso e privacidade — Moeda Social Desapego",
@@ -11,9 +14,8 @@ export const metadata: Metadata = {
 // VERSAO_TERMOS em lib/sessao.ts: é ela que fica gravada em cada aceite.
 export default function Termos() {
   return (
-    <main className="app texto-legal">
+    <main className={`app texto-legal ${fontesDoApp}`}>
       <header className="app-topo">
-        <p className="sobrenome">Moeda Social Desapego</p>
         <h1 className="app-titulo">Termos de uso e privacidade</h1>
         <p className="app-subtitulo">Versão preliminar, sujeita a revisão.</p>
       </header>

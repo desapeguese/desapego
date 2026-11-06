@@ -6,8 +6,10 @@ Desapegue-se.
 Live: <https://desapego.festivaldesapeguese.com.br>
 
 O escopo completo está em [docs/PRD.md](docs/PRD.md). Hoje o repositório tem a
-landing e a **Etapa 1** do app: cadastro, login sem senha, perfis e o livro de
-transações. Enviar, receber e as telas de Caixa e Admin são as próximas etapas.
+landing e as **Etapas 1 e 2** do app: cadastro, login sem senha, perfis, o
+livro de transações e a carteira (saldo, histórico, receber por QR, enviar pela
+câmera ou e-mail, avisos em tempo real, PWA instalável). As telas de Caixa e
+Admin são as próximas etapas.
 
 ## Stack
 
@@ -55,6 +57,22 @@ npm run build && npm start   # build de produção (o start aplica as migraçõe
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | não | Sem as duas, o botão "Entrar com Google" não aparece. Redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/google`. |
 | `PGPOOL_MAX` | não | Só com o banco local: `1`. |
 
+## Identidade visual do app
+
+O app segue a cédula, não a landing: papel verde-claro, tinta verde, numerais
+em Barlow Condensed, a faixa de guilhochê em tudo o que mostra um valor e as
+cores das pessoas da roda nos avatares. O desenho de referência é o canvas
+“Carteira Desapego — identidade visual” no Claude Design
+(<https://claude.ai/artifact/Urhp4o2sYHNpjwGjWNQFqb>, privado do autor).
+
+- Cada conta tem um número de série no formato da cédula (`DES-2026-00412`):
+  ano de criação + `conta.numero`, sequencial.
+- Cada transação é mostrada por um número curto (`7F3A-91C2`), os oito
+  primeiros dígitos do identificador. É o que a pessoa mostra ao Caixa para
+  pedir estorno.
+- A cor de uma pessoa é derivada do id dela (`corDaPessoa` em `lib/formato.ts`),
+  então é a mesma em todas as telas.
+
 ## Regras que o código garante
 
 - **Todo movimento de moeda passa por `lib/ledger.ts`.** Nenhum outro arquivo
@@ -65,6 +83,15 @@ npm run build && npm start   # build de produção (o start aplica as migraçõe
 - **Papel, `ativo` e aceite dos termos nunca vêm do cliente.** São lidos do
   banco a cada pedido em `lib/sessao.ts`; toda página do app começa por
   `exigirPessoa()`.
+- **O QR de receber é um link** `…/app/enviar?para=<id da pessoa>`. Lido dentro
+  do app vai direto para o valor; lido pela câmera do celular abre o app na
+  mesma tela. O endereço vem de `BETTER_AUTH_URL`.
+- **O service worker não guarda páginas nem dados.** Só troca o erro do
+  navegador pela tela "sem conexão", vale apenas em `/app` e só é registrado em
+  produção.
+- **Os avisos em tempo real são um barramento em memória** (`lib/eventos.ts`),
+  com a mesma restrição de réplica única do item abaixo. Quem perde um aviso
+  não perde dados: o app também consulta o servidor periodicamente.
 - **O limitador de pedidos de código é em memória** (`lib/limite.ts`), o que só
   vale com uma réplica. Antes de escalar para duas, mover para o banco.
 
@@ -74,8 +101,13 @@ npm run build && npm start   # build de produção (o start aplica as migraçõe
 |---|---|
 | `app/page.tsx` | A landing. All copy lives here, in pt-BR. |
 | `app/layout.tsx` | `<html>`, fonts, and all SEO/OpenGraph metadata. |
-| `app/globals.css` | Every style. No CSS framework. |
-| `app/app/` | O app: carteira (`page.tsx`), `entrar/`, `cadastro/`. |
+| `app/globals.css` | Every style. No CSS framework. A landing é escura; o app (`.app`) é claro, ver “Identidade visual”. |
+| `app/app/(carteira)/` | Páginas que exigem login: carteira, `receber/`, `enviar/`, `historico/`, `transacao/[id]/`, `conta/`. |
+| `app/app/pecas.tsx`, `app/fontes.ts` | Peças visuais compartilhadas (a nota, avatares, barra inferior) e as fontes do app. |
+| `app/app/entrar/`, `app/app/cadastro/` | Login e primeiro acesso. |
+| `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
+| `app/manifest.ts`, `public/sw.js`, `public/sem-conexao.html` | PWA: manifesto, service worker e a tela sem internet. |
+| `public/icone-*-v1.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs`. |
 | `app/termos/` | Termos de uso e privacidade (rascunho, ver abaixo). |
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
@@ -141,8 +173,9 @@ railway up
 
 ## Not here yet
 
-- Etapas 2 a 5 do [PRD](docs/PRD.md): carteira (enviar, receber, histórico),
-  Caixa, Admin, passkey e 2FA.
+- Etapas 3 a 5 do [PRD](docs/PRD.md): Caixa, Admin, passkey e 2FA.
+- **Ícone definitivo do app.** Os ícones do PWA são um "1" desenhado em código,
+  provisório até existir a arte oficial em alta resolução.
 - **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
   revisão jurídica. Ao publicar o texto final, mude `VERSAO_TERMOS` em
   `lib/sessao.ts`: é ela que fica gravada em cada aceite.

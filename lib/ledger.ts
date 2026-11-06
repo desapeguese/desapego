@@ -314,22 +314,36 @@ export async function estornar(
   });
 }
 
-/** Saldo, limite e quanto ainda dá para enviar. `disponivel` nulo = sem limite. */
+/**
+ * Saldo, limite, quanto ainda dá para enviar e o número sequencial da conta.
+ * `disponivel` nulo = sem limite.
+ */
 export async function obterSaldo(db: Banco, usuarioId: string) {
-  const [linha] = await db
-    .select({
-      papel: user.papel,
-      saldo: conta.saldo,
-      limiteNegativo: conta.limiteNegativo,
-    })
-    .from(user)
-    .leftJoin(conta, eq(conta.usuarioId, user.id))
-    .where(eq(user.id, usuarioId));
+  const ler = () =>
+    db
+      .select({
+        papel: user.papel,
+        numero: conta.numero,
+        saldo: conta.saldo,
+        limiteNegativo: conta.limiteNegativo,
+      })
+      .from(user)
+      .leftJoin(conta, eq(conta.usuarioId, user.id))
+      .where(eq(user.id, usuarioId));
+
+  let [linha] = await ler();
   if (!linha) throw new ErroLedger("USUARIO_NAO_ENCONTRADO", "Usuário não encontrado.");
+  if (linha.numero === null) {
+    // A conta nasce junto com a pessoa (lib/auth.ts); isto cobre quem foi
+    // criado por outro caminho.
+    await db.insert(conta).values({ usuarioId }).onConflictDoNothing();
+    [linha] = await ler();
+  }
 
   const saldo = linha.saldo ?? 0;
   const limite = limiteEfetivo(linha.papel, linha.limiteNegativo, await limitePadraoCaixa(db));
   return {
+    numero: linha.numero ?? 0,
     saldo,
     limite,
     disponivel: limite === null ? null : Math.max(0, saldo + limite),
@@ -362,4 +376,117 @@ export async function verificarIntegridade(db: Banco) {
     "rows" in divergentes ? divergentes.rows : divergentes
   ) as { usuario_id: string; saldo: number; calculado: number }[];
   return { somaSaldos: soma, contasDivergentes, integro: soma === 0 && contasDivergentes.length === 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Leitura
+// ---------------------------------------------------------------------------
+
+export type LinhaExtrato = {
+  id: string;
+  criadaEm: Date;
+  tipo: TipoTransacao;
+  /** Positivo quando entrou na conta, negativo quando saiu. */
+  valor: number;
+  descricao: string;
+  contraparteId: string;
+  contraparteNome: string;
+  estornoDe: string | null;
+};
+
+/**
+ * Extrato de uma conta, do mais recente para o mais antigo. `cursor` é o
+ * `proximo` devolvido pela página anterior.
+ */
+export async function listarExtrato(
+  db: Banco,
+  usuarioId: string,
+  opcoes: { limite?: number; cursor?: string | null } = {},
+): Promise<{ linhas: LinhaExtrato[]; proximo: string | null }> {
+  const limite = Math.min(Math.max(opcoes.limite ?? 20, 1), 100);
+
+  // O cursor é "instante|id". O instante vem do próprio banco como texto, com
+  // os microssegundos, porque um Date do JavaScript os perderia e a paginação
+  // pularia ou repetiria linhas criadas no mesmo milissegundo.
+  let aPartirDe = sql`true`;
+  if (opcoes.cursor) {
+    const [instante, id] = opcoes.cursor.split("|");
+    if (!instante || !id || Number.isNaN(Date.parse(instante)) || !/^[0-9a-f-]{36}$/.test(id)) {
+      return { linhas: [], proximo: null };
+    }
+    aPartirDe = sql`(t.criada_em, t.id) < (${instante}::timestamptz, ${id}::uuid)`;
+  }
+
+  const resultado = await db.execute(sql`
+    select t.id, t.criada_em, t.criada_em::text as cursor_instante, t.tipo, t.valor,
+           t.descricao, t.estorno_de, t.de_conta, t.para_conta,
+           de.name as de_nome, para.name as para_nome
+    from ${transacao} t
+    join ${user} de on de.id = t.de_conta
+    join ${user} para on para.id = t.para_conta
+    where (t.de_conta = ${usuarioId} or t.para_conta = ${usuarioId}) and ${aPartirDe}
+    order by t.criada_em desc, t.id desc
+    limit ${limite + 1}
+  `);
+  type Bruta = {
+    id: string;
+    criada_em: Date | string;
+    cursor_instante: string;
+    tipo: TipoTransacao;
+    valor: number;
+    descricao: string;
+    estorno_de: string | null;
+    de_conta: string;
+    para_conta: string;
+    de_nome: string;
+    para_nome: string;
+  };
+  const brutas = ("rows" in resultado ? resultado.rows : resultado) as unknown as Bruta[];
+
+  const pagina = brutas.slice(0, limite);
+  const ultima = pagina.at(-1);
+  return {
+    linhas: pagina.map((b) => {
+      const entrou = b.para_conta === usuarioId;
+      return {
+        id: b.id,
+        criadaEm: new Date(b.criada_em),
+        tipo: b.tipo,
+        valor: entrou ? b.valor : -b.valor,
+        descricao: b.descricao,
+        contraparteId: entrou ? b.de_conta : b.para_conta,
+        contraparteNome: entrou ? b.de_nome : b.para_nome,
+        estornoDe: b.estorno_de,
+      };
+    }),
+    proximo: brutas.length > limite && ultima ? `${ultima.cursor_instante}|${ultima.id}` : null,
+  };
+}
+
+/** Uma transação, vista por uma das duas pontas. `null` se a pessoa não participa. */
+export async function obterTransacaoDe(
+  db: Banco,
+  usuarioId: string,
+  transacaoId: string,
+): Promise<LinhaExtrato | null> {
+  if (!/^[0-9a-f-]{36}$/.test(transacaoId)) return null;
+  const [t] = await db.select().from(transacao).where(eq(transacao.id, transacaoId));
+  if (!t || (t.deConta !== usuarioId && t.paraConta !== usuarioId)) return null;
+
+  const entrou = t.paraConta === usuarioId;
+  const contraparteId = entrou ? t.deConta : t.paraConta;
+  const [contraparte] = await db
+    .select({ nome: user.name })
+    .from(user)
+    .where(eq(user.id, contraparteId));
+  return {
+    id: t.id,
+    criadaEm: t.criadaEm,
+    tipo: t.tipo,
+    valor: entrou ? t.valor : -t.valor,
+    descricao: t.descricao,
+    contraparteId,
+    contraparteNome: contraparte?.nome ?? "",
+    estornoDe: t.estornoDe,
+  };
 }

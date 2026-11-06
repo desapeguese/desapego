@@ -10,7 +10,6 @@ export default async function Cadastro() {
   return (
     <>
       <header className="app-topo">
-        <p className="sobrenome">Moeda Social Desapego</p>
         <h1 className="app-titulo">Complete seu cadastro</h1>
         <p className="app-subtitulo">Falta pouco para sua carteira ficar pronta.</p>
       </header>

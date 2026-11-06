@@ -3,7 +3,10 @@
  * tiver uma réplica só (.railway/railway.ts); com mais de uma, mover para o
  * banco.
  */
-const registros = new Map<string, number[]>();
+// Em globalThis porque o Next empacota rotas de API e server actions em
+// módulos separados, e cada um teria a sua contagem.
+const global = globalThis as unknown as { __desapegoLimites?: Map<string, number[]> };
+const registros = (global.__desapegoLimites ??= new Map<string, number[]>());
 
 export function permitir(chave: string, maximo: number, janelaMs: number): boolean {
   const agora = Date.now();

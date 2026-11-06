@@ -111,6 +111,8 @@ export const conta = pgTable(
     usuarioId: text("usuario_id")
       .primaryKey()
       .references(() => user.id, { onDelete: "restrict" }),
+    // Sequencial, para o número de série da conta (DES-2026-00412).
+    numero: integer("numero").generatedAlwaysAsIdentity().notNull().unique(),
     saldo: integer("saldo").notNull().default(0),
     // Quanto a conta pode ficar abaixo de zero. Nulo = padrão do papel
     // (usuário 0, caixa o padrão global, admin sem limite).

@@ -90,7 +90,7 @@ export function FormularioEntrar({ googleAtivo }: { googleAtivo: boolean }) {
 
   if (etapa === "codigo") {
     return (
-      <form className="cartao formulario" onSubmit={entrar}>
+      <form className="formulario" onSubmit={entrar}>
         <p className="formulario-texto">
           Enviamos um código de 6 dígitos para <strong>{email.trim().toLowerCase()}</strong>.
           Ele vale por 10 minutos.
@@ -137,7 +137,7 @@ export function FormularioEntrar({ googleAtivo }: { googleAtivo: boolean }) {
   }
 
   return (
-    <form className="cartao formulario" onSubmit={enviarEmail}>
+    <form className="formulario" onSubmit={enviarEmail}>
       <label className="campo">
         <span>Seu e-mail</span>
         <input

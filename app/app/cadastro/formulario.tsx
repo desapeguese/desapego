@@ -12,7 +12,7 @@ export function FormularioCadastro(props: { nome: string; telefone: string; emai
   });
 
   return (
-    <form className="cartao formulario" action={acao}>
+    <form className="formulario" action={acao}>
       <label className="campo">
         <span>Nome completo</span>
         <input name="nome" autoComplete="name" required maxLength={120} defaultValue={estado.nome} />

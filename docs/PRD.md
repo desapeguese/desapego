@@ -244,7 +244,7 @@ A ordem prioriza o que o balcão precisa.
 | Etapa | Conteúdo | Resultado |
 |---|---|---|
 | 1. Base ✅ | Banco, cadastro, login por e-mail e Google, perfis, livro de transações com soma zero e limites | Contas existem e o núcleo é confiável |
-| 2. Carteira | Saldo, histórico, Receber (QR), Enviar (câmera e e-mail), tempo real, PWA instalável | Pessoas trocam entre si |
+| 2. Carteira ✅ | Saldo, histórico, Receber (QR), Enviar (câmera e e-mail), tempo real, PWA instalável | Pessoas trocam entre si |
 | 3. Caixa | Busca e gestão de usuários, Dar/Tomar, cédulas, estorno, log de auditoria, e-mails de aviso | Balcão do evento operável |
 | 4. Admin | Perfis e limites, lista de transações com CSV, indicadores | Organização audita |
 | 5. Complementos | Passkey e 2FA (com TOTP), edições do festival, gráfico por período | Escopo completo da v1 |

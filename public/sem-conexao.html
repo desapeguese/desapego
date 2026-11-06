@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#D9DFCF" />
+    <title>Sem conexão — Desapego</title>
+    <!-- Página servida pelo service worker quando não há internet: tudo em
+         linha, porque nenhum outro arquivo estará disponível. -->
+    <style>
+      body {
+        margin: 0;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: 24px 16px;
+        box-sizing: border-box;
+        background: #d9dfcf;
+        color: #143d20;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        text-align: center;
+        line-height: 1.5;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 1.7rem;
+        text-transform: uppercase;
+        line-height: 1.1;
+        color: #1f5a2e;
+      }
+      p {
+        margin: 0 auto 28px;
+        max-width: 30ch;
+        color: #143d20;
+      }
+      button {
+        min-height: 52px;
+        padding: 0 28px;
+        border: 0;
+        border-radius: 16px;
+        background: #1f5a2e;
+        color: #f1f4ea;
+        font: inherit;
+        font-weight: 700;
+        font-size: 0.86rem;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sem conexão</h1>
+      <p>A carteira Desapego precisa de internet. Confira o Wi-Fi ou os dados móveis e tente de novo.</p>
+      <button type="button" onclick="location.reload()">Tentar de novo</button>
+    </main>
+  </body>
+</html>

@@ -8,14 +8,26 @@ export default async function Entrar() {
 
   return (
     <>
-      <header className="app-topo">
-        <p className="sobrenome">Moeda Social Desapego</p>
-        <h1 className="app-titulo">Entrar</h1>
-        <p className="app-subtitulo">
-          Sem senha: você recebe um código por e-mail. Se ainda não tem conta,
-          ela é criada agora.
+      <div className="entrada-notas">
+        <img className="entrada-nota--verso" src="/cedula-verso-v2.webp" width={916} height={414} alt="" />
+        <img
+          className="entrada-nota--frente"
+          src="/cedula-frente-v2.webp"
+          width={916}
+          height={414}
+          alt="Cédula de 1 Desapego, com uma roda de pessoas de mãos dadas ao redor do símbolo da reciclagem"
+        />
+      </div>
+
+      <header className="entrada-texto">
+        <p className="rotulo">moeda social Desapego</p>
+        <h1 className="app-titulo" style={{ textAlign: "left" }}>A riqueza está em circular</h1>
+        <p>
+          Entre sem senha: enviamos um código para o seu e-mail. Se ainda não
+          tem carteira, ela nasce agora.
         </p>
       </header>
+
       <FormularioEntrar googleAtivo={googleAtivo} />
     </>
   );

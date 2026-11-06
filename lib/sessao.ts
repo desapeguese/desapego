@@ -48,3 +48,12 @@ export async function exigirPessoa(opcoes: { papeis?: Papel[] } = {}): Promise<P
   if (opcoes.papeis && !opcoes.papeis.includes(pessoa.papel)) redirect("/app");
   return pessoa;
 }
+
+/**
+ * Para server actions, que devolvem erro em vez de redirecionar: a pessoa
+ * logada e com cadastro completo, ou `null`.
+ */
+export async function pessoaComCadastro(): Promise<Pessoa | null> {
+  const pessoa = await pessoaLogada();
+  return pessoa?.termosAceitosEm ? pessoa : null;
+}
