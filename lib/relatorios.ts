@@ -221,3 +221,70 @@ export function celulaCsv(valor: string | number | null): string {
 
 /** Ponto e vírgula como separador: é o que o Excel em português espera. */
 export const linhaCsv = (celulas: (string | number | null)[]) => celulas.map(celulaCsv).join(";") + "\r\n";
+
+// ---------------------------------------------------------------------------
+// Série por período (o gráfico)
+// ---------------------------------------------------------------------------
+
+export const GRAOS = ["dia", "semana", "mes"] as const;
+export type Grao = (typeof GRAOS)[number];
+const TRUNC: Record<Grao, string> = { dia: "day", semana: "week", mes: "month" };
+
+export type PontoDaSerie = {
+  /** Primeiro dia do período, "AAAA-MM-DD" (a semana começa na segunda). */
+  inicio: string;
+  /** Entrou em circulação: Caixa pagou ou recebeu cédulas. */
+  emitido: number;
+  /** Saiu de circulação: Caixa recebeu ou entregou cédulas. */
+  recolhido: number;
+  /** Trocas entre pessoas: não mudam o total em circulação. */
+  entrePessoas: number;
+};
+
+function proximoInicio(inicio: string, grao: Grao): string {
+  const d = new Date(`${inicio}T00:00:00Z`);
+  if (grao === "dia") d.setUTCDate(d.getUTCDate() + 1);
+  else if (grao === "semana") d.setUTCDate(d.getUTCDate() + 7);
+  else d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Emissão e recolhimento por dia, semana ou mês (horário de Brasília), com os
+ * períodos vazios preenchidos com zero. Um estorno conta no sentido contrário
+ * ao da transação que ele desfaz.
+ */
+export async function seriePorPeriodo(db: Banco, filtros: Filtros, grao: Grao): Promise<PontoDaSerie[]> {
+  const brutas = linhas<PontoDaSerie>(
+    await db.execute(sql`
+      select to_char(date_trunc(${TRUNC[grao]}, t.criada_em at time zone ${FUSO}), 'YYYY-MM-DD') as inicio,
+        coalesce(sum(t.valor) filter (where t.tipo in ('dar', 'deposito_cedula')
+          or (t.tipo = 'estorno' and o.tipo in ('tomar', 'saque_cedula'))), 0)::int as emitido,
+        coalesce(sum(t.valor) filter (where t.tipo in ('tomar', 'saque_cedula')
+          or (t.tipo = 'estorno' and o.tipo in ('dar', 'deposito_cedula'))), 0)::int as recolhido,
+        coalesce(sum(t.valor) filter (where t.tipo = 'envio'
+          or (t.tipo = 'estorno' and o.tipo = 'envio')), 0)::int as "entrePessoas"
+      from ${transacao} t
+      left join ${transacao} o on o.id = t.estorno_de
+      where ${condicao(filtros)}
+      group by 1 order by 1
+    `),
+  );
+  if (brutas.length === 0) return [];
+
+  const porInicio = new Map(brutas.map((p) => [p.inicio, p]));
+  const serie: PontoDaSerie[] = [];
+  const ultimo = brutas[brutas.length - 1].inicio;
+  // Teto de segurança: um intervalo absurdo não vira um laço sem fim.
+  for (let dia = brutas[0].inicio; dia <= ultimo && serie.length < 1000; dia = proximoInicio(dia, grao)) {
+    serie.push(porInicio.get(dia) ?? { inicio: dia, emitido: 0, recolhido: 0, entrePessoas: 0 });
+  }
+  return serie;
+}
+
+/** O grão que deixa o gráfico legível para o intervalo: no máximo ~45 colunas. */
+export function graoSugerido(de: string, ate: string): Grao {
+  const dias = (Date.parse(ate) - Date.parse(de)) / 86_400_000 + 1;
+  if (dias <= 45) return "dia";
+  return dias <= 45 * 7 ? "semana" : "mes";
+}

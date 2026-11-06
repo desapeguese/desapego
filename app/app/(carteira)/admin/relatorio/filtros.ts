@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { obterEdicao, type Edicao } from "@/lib/edicoes";
 import { limparFiltros, type Filtros } from "@/lib/relatorios";
 
 export type Parametros = Record<string, string | string[] | undefined>;
@@ -21,7 +22,9 @@ async function idPorEmail(email: string): Promise<string | null> {
  */
 export async function lerFiltros(parametros: Parametros): Promise<{
   filtros: Filtros;
-  texto: { de: string; ate: string; tipo: string; operador: string; usuario: string };
+  texto: { de: string; ate: string; tipo: string; operador: string; usuario: string; edicao: string };
+  /** A edição escolhida: as datas dela mandam nas datas digitadas. */
+  edicao: Edicao | null;
   avisos: string[];
   /** Os mesmos filtros, para montar links (CSV, paginação). */
   consulta: URLSearchParams;
@@ -32,7 +35,16 @@ export async function lerFiltros(parametros: Parametros): Promise<{
     tipo: um(parametros.tipo),
     operador: um(parametros.operador),
     usuario: um(parametros.usuario),
+    edicao: um(parametros.edicao),
   };
+  // Escolher uma edição é escolher o intervalo de dias dela.
+  const edicao = texto.edicao ? await obterEdicao(db, texto.edicao) : null;
+  if (edicao) {
+    texto.de = edicao.inicio;
+    texto.ate = edicao.fim;
+  } else {
+    texto.edicao = "";
+  }
   const avisos: string[] = [];
   // Um id que nenhuma conta tem.
   const NINGUEM = "-ninguem-";
@@ -54,5 +66,5 @@ export async function lerFiltros(parametros: Parametros): Promise<{
 
   const consulta = new URLSearchParams();
   for (const [chave, valor] of Object.entries(texto)) if (valor) consulta.set(chave, valor);
-  return { filtros, texto, avisos, consulta };
+  return { filtros, texto, avisos, consulta, edicao };
 }

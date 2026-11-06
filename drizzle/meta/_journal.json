@@ -22,6 +22,13 @@
       "when": 1793930787584,
       "tag": "0002_numero_da_conta",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793967009377,
+      "tag": "0003_edicoes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { listarEdicoes } from "@/lib/edicoes";
 import { NOME_TIPO, numeroCurto } from "@/lib/formato";
 import { linhaCsv, listarTransacoes } from "@/lib/relatorios";
 import { pessoaComCadastro } from "@/lib/sessao";
@@ -21,6 +22,13 @@ export async function GET(pedido: Request) {
   const parametros = Object.fromEntries(new URL(pedido.url).searchParams);
   const { filtros } = await lerFiltros(parametros);
   const codificador = new TextEncoder();
+  // A edição de cada transação é a que contém o dia dela (horário de Brasília).
+  const edicoes = await listarEdicoes(db);
+  const diaIso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+  const edicaoDe = (instante: Date) => {
+    const dia = diaIso.format(instante);
+    return edicoes.find((e) => e.inicio <= dia && dia <= e.fim)?.nome ?? null;
+  };
 
   const fluxo = new ReadableStream<Uint8Array>({
     async start(controle) {
@@ -32,7 +40,7 @@ export async function GET(pedido: Request) {
             linhaCsv([
               "Número", "Data", "Hora", "Tipo", "Valor (D$)",
               "Saiu de", "E-mail (saiu de)", "Entrou em", "E-mail (entrou em)",
-              "Feita por", "E-mail (feita por)", "Descrição", "Estorno de", "Identificador",
+              "Feita por", "E-mail (feita por)", "Descrição", "Estorno de", "Edição", "Identificador",
             ]),
           ),
         );
@@ -46,7 +54,7 @@ export async function GET(pedido: Request) {
               numeroCurto(t.id), data.format(t.criadaEm), hora.format(t.criadaEm), NOME_TIPO[t.tipo], t.valor,
               t.deNome, t.deEmail, t.paraNome, t.paraEmail,
               t.operadorNome, t.operadorEmail, t.descricao,
-              t.estornoDe ? numeroCurto(t.estornoDe) : null, t.id,
+              t.estornoDe ? numeroCurto(t.estornoDe) : null, edicaoDe(t.criadaEm), t.id,
             ]);
           }
           controle.enqueue(codificador.encode(lote));

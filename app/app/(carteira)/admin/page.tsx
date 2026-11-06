@@ -57,9 +57,10 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
         </p>
       )}
 
-      <nav className="acoes" aria-label="Relatórios">
+      <nav className="acoes acoes--tres" aria-label="Relatórios">
         <Link className="botao" href="/app/admin/relatorio">Transações</Link>
         <Link className="botao botao--contorno" href="/app/admin/auditoria">Registro</Link>
+        <Link className="botao botao--contorno" href="/app/admin/edicoes">Edições</Link>
       </nav>
 
       <section aria-labelledby="titulo-retrato">

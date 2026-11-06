@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -192,4 +193,23 @@ export const auditoria = pgTable(
     detalhes: jsonb("detalhes").notNull().default({}),
   },
   (t) => [index("auditoria_alvo_idx").on(t.alvoId, t.criadaEm)],
+);
+
+/**
+ * Edições do Festival. Servem para registro e para filtrar relatórios: uma
+ * transação pertence à edição em cujo intervalo de dias ela caiu (horário de
+ * Brasília). Nada é gravado na transação, então corrigir as datas de uma
+ * edição reclassifica o histórico sem tocar no livro, que é imutável.
+ */
+export const edicao = pgTable(
+  "edicao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nome: text("nome").notNull(),
+    // Dias inteiros, inclusivos nas duas pontas.
+    inicio: date("inicio", { mode: "string" }).notNull(),
+    fim: date("fim", { mode: "string" }).notNull(),
+    criadaEm: instante("criada_em").notNull().defaultNow(),
+  },
+  (t) => [check("edicao_datas_em_ordem", sql`${t.inicio} <= ${t.fim}`)],
 );

@@ -2,10 +2,12 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { TIPOS_TRANSACAO } from "@/lib/db/schema";
 import { dataHora, inteiro, moeda, NOME_TIPO, numeroCurto } from "@/lib/formato";
-import { listarTransacoes, resumirPeriodo } from "@/lib/relatorios";
+import { listarEdicoes } from "@/lib/edicoes";
+import { GRAOS, graoSugerido, listarTransacoes, resumirPeriodo, seriePorPeriodo, type Grao } from "@/lib/relatorios";
 import { exigirPessoa } from "@/lib/sessao";
 import { Topo } from "../../topo";
 import { lerFiltros, type Parametros } from "./filtros";
+import { GraficoPeriodo } from "./grafico";
 
 /** "AAAA-MM-DD" de hoje menos `dias`, no horário de Brasília. */
 function dia(dias: number): string {
@@ -19,10 +21,23 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
   const { filtros, texto, avisos, consulta } = await lerFiltros(parametros);
   const cursor = typeof parametros.a === "string" ? parametros.a : null;
 
-  const [resumo, { linhas, proximo }] = await Promise.all([
+  // O grão vem da URL; sem ela, do tamanho do intervalo (ou dia, se não há um).
+  const pedido = typeof parametros.g === "string" ? parametros.g : "";
+  const grao: Grao = GRAOS.includes(pedido as Grao)
+    ? (pedido as Grao)
+    : filtros.de && filtros.ate
+      ? graoSugerido(filtros.de, filtros.ate)
+      : "dia";
+
+  const [resumo, { linhas, proximo }, serieBruta, edicoes] = await Promise.all([
     resumirPeriodo(db, filtros),
     listarTransacoes(db, filtros, { limite: 50, cursor }),
+    seriePorPeriodo(db, filtros, grao),
+    listarEdicoes(db),
   ]);
+  // Colunas demais não cabem na tela: fica com as mais recentes e avisa.
+  const MAXIMO_DE_COLUNAS = 60;
+  const serie = serieBruta.slice(-MAXIMO_DE_COLUNAS);
 
   const base = "/app/admin/relatorio";
   const comFiltros = (extra: Record<string, string> = {}) => {
@@ -35,12 +50,14 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
     const q = new URLSearchParams(consulta);
     q.set("de", de);
     q.set("ate", dia(0));
+    q.delete("edicao");
     return `${base}?${q}`;
   };
   const semPeriodo = (() => {
     const q = new URLSearchParams(consulta);
     q.delete("de");
     q.delete("ate");
+    q.delete("edicao");
     const s = q.toString();
     return s ? `${base}?${s}` : base;
   })();
@@ -50,6 +67,17 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
       <Topo titulo="Transações" voltar={{ href: "/app/admin", rotulo: "Voltar ao Admin" }} />
 
       <form className="formulario cartao" action={base}>
+        {edicoes.length > 0 && (
+          <label className="campo">
+            <span>Edição do Festival</span>
+            <select name="edicao" defaultValue={texto.edicao}>
+              <option value="">Nenhuma (usar as datas abaixo)</option>
+              {edicoes.map((e) => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="campos-lado">
           <label className="campo">
             <span>De</span>
@@ -137,6 +165,32 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
           </table>
         )}
       </section>
+
+      {serie.length > 0 && (
+        <section aria-labelledby="titulo-grafico">
+          <div className="secao-cabeca">
+            <h2 className="secao-titulo" id="titulo-grafico">Emitido e recolhido</h2>
+            <p className="graos" style={{ margin: 0 }}>
+              {GRAOS.map((g) => (
+                <Link key={g} href={`${base}${comFiltros({ g })}`} aria-current={g === grao ? "true" : undefined}>
+                  {g === "mes" ? "mês" : g}
+                </Link>
+              ))}
+            </p>
+          </div>
+          <p className="mensagem">
+            Emitido é o que o Caixa pagou ou recebeu em cédulas; recolhido, o que ele recebeu ou entregou em
+            cédulas. Estornos contam no sentido contrário.
+          </p>
+          <GraficoPeriodo serie={serie} grao={grao} />
+          {serieBruta.length > serie.length && (
+            <p className="mensagem">
+              Mostrando os {serie.length} períodos mais recentes de {serieBruta.length}. Escolha um intervalo
+              menor ou agrupe por semana ou mês.
+            </p>
+          )}
+        </section>
+      )}
 
       <section aria-labelledby="titulo-lista">
         <div className="secao-cabeca">

@@ -25,6 +25,15 @@ export function descreverAuditoria(linha: Pick<LinhaAuditoria, "acao" | "detalhe
       return `Limite negativo alterado de ${limite(d.de)} para ${limite(d.para)}`;
     case "limite_padrao_caixa":
       return `Limite padrão do Caixa alterado de D$ ${String(d.de)} para D$ ${String(d.para)}`;
+    case "edicao_criada":
+      return `Edição criada: ${String(d.nome)} (${String(d.inicio)} a ${String(d.fim)})`;
+    case "edicao_removida":
+      return `Edição removida: ${String(d.nome)} (${String(d.inicio)} a ${String(d.fim)})`;
+    case "edicao_alterada": {
+      const de = d.de as Record<string, string>;
+      const para = d.para as Record<string, string>;
+      return `Edição alterada: ${de.nome} (${de.inicio} a ${de.fim}) passou a ${para.nome} (${para.inicio} a ${para.fim})`;
+    }
     case "estorno":
       return `Estorno feito (${String(d.motivo ?? "sem motivo")})`;
     case "dados_alterados":

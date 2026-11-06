@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Banco } from "../lib/db";
 import * as schema from "../lib/db/schema";
 import { estornar, transferir } from "../lib/ledger";
-import { celulaCsv, limparFiltros, linhaCsv, listarTransacoes, resumirPeriodo, retratoAtual } from "../lib/relatorios";
+import { criarEdicao, edicaoDoDia, editarEdicao, listarEdicoes, obterEdicao, removerEdicao } from "../lib/edicoes";
+import { celulaCsv, graoSugerido, limparFiltros, linhaCsv, listarTransacoes, resumirPeriodo, retratoAtual, seriePorPeriodo } from "../lib/relatorios";
 
 let db: Banco;
 let n = 0;
@@ -140,5 +141,71 @@ describe("CSV", () => {
     expect(celulaCsv("-desconto")).toBe("'-desconto");
     expect(celulaCsv("@fulano")).toBe("'@fulano");
     expect(linhaCsv(["a", 1, null, "=1+1"])).toBe("a;1;;'=1+1\r\n");
+  });
+});
+
+describe("série por período", () => {
+  it("separa emissão, recolhimento e trocas entre pessoas", async () => {
+    const serie = await seriePorPeriodo(db, {}, "dia");
+    // dar 100 + dar 40 + depósito 7 | tomar 20 + saque 2 | envio 30
+    expect(serie).toHaveLength(1);
+    expect(serie[0]).toMatchObject({ emitido: 147, recolhido: 22, entrePessoas: 30 });
+    expect(serie[0].inicio).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("um estorno conta no sentido contrário ao da transação desfeita", async () => {
+    const { linhas: dadas } = await listarTransacoes(db, { tipo: "dar" });
+    const { linhas: tomadas } = await listarTransacoes(db, { tipo: "tomar" });
+    const { linhas: envios } = await listarTransacoes(db, { tipo: "envio" });
+    await estornar(db, { operadorId: "admin", transacaoId: dadas[0].id, motivo: "x", chaveIdempotencia: "e1" });
+    await estornar(db, { operadorId: "admin", transacaoId: tomadas[0].id, motivo: "x", chaveIdempotencia: "e2" });
+    await estornar(db, { operadorId: "admin", transacaoId: envios[0].id, motivo: "x", chaveIdempotencia: "e3" });
+    const [ponto] = await seriePorPeriodo(db, {}, "mes");
+    expect(ponto).toMatchObject({ emitido: 147 + 20, recolhido: 22 + dadas[0].valor, entrePessoas: 60 });
+    expect(ponto.inicio.endsWith("-01")).toBe(true);
+  });
+
+  it("respeita os filtros, agrupa por semana e devolve vazio sem dados", async () => {
+    expect(await seriePorPeriodo(db, { usuarioId: "ninguem" }, "dia")).toEqual([]);
+    const [semana] = await seriePorPeriodo(db, { operadorId: "admin" }, "semana");
+    expect(semana).toMatchObject({ emitido: 40, recolhido: 0, entrePessoas: 0 });
+    expect(new Date(`${semana.inicio}T12:00:00Z`).getUTCDay()).toBe(1);
+  });
+
+  it("sugere o grão pelo tamanho do intervalo", () => {
+    expect(graoSugerido("2026-11-01", "2026-11-30")).toBe("dia");
+    expect(graoSugerido("2026-01-01", "2026-06-30")).toBe("semana");
+    expect(graoSugerido("2024-01-01", "2026-12-31")).toBe("mes");
+  });
+});
+
+describe("edições do festival", () => {
+  const admin = { id: "admin", papel: "admin" as const };
+  const caixa = { id: "caixa", papel: "caixa" as const };
+
+  it("cria, edita e remove com registro, e acha a edição de um dia", async () => {
+    const e = await criarEdicao(db, admin, { nome: "  Festival  2026 ", inicio: "2026-11-27", fim: "2026-11-29" });
+    expect(e).toMatchObject({ nome: "Festival 2026", inicio: "2026-11-27", fim: "2026-11-29" });
+    expect((await edicaoDoDia(db, "2026-11-27"))?.id).toBe(e.id);
+    expect((await edicaoDoDia(db, "2026-11-29"))?.id).toBe(e.id);
+    expect(await edicaoDoDia(db, "2026-11-30")).toBeNull();
+
+    await editarEdicao(db, admin, e.id, { nome: "Festival 2026", inicio: "2026-11-27", fim: "2026-11-30" });
+    expect((await edicaoDoDia(db, "2026-11-30"))?.id).toBe(e.id);
+    await editarEdicao(db, admin, e.id, { nome: "Festival 2026", inicio: "2026-11-27", fim: "2026-11-30" });
+    await removerEdicao(db, admin, e.id);
+    expect(await listarEdicoes(db)).toEqual([]);
+    expect(await obterEdicao(db, e.id)).toBeNull();
+
+    const acoes = (await db.select().from(schema.auditoria)).map((a) => a.acao).sort();
+    expect(acoes).toEqual(["edicao_alterada", "edicao_criada", "edicao_removida"]);
+  });
+
+  it("recusa datas invertidas, nome vazio e quem não é Admin", async () => {
+    await expect(criarEdicao(db, admin, { nome: "X 2026", inicio: "2026-12-02", fim: "2026-12-01" })).rejects.toMatchObject({ codigo: "LIMITE_INVALIDO" });
+    await expect(criarEdicao(db, admin, { nome: " ", inicio: "2026-12-01", fim: "2026-12-01" })).rejects.toMatchObject({ codigo: "NOME_INVALIDO" });
+    await expect(criarEdicao(db, admin, { nome: "X 2026", inicio: "amanhã", fim: "2026-12-01" })).rejects.toMatchObject({ codigo: "LIMITE_INVALIDO" });
+    await expect(criarEdicao(db, caixa, { nome: "X 2026", inicio: "2026-12-01", fim: "2026-12-01" })).rejects.toMatchObject({ codigo: "SEM_PERMISSAO" });
+    await expect(removerEdicao(db, admin, "00000000-0000-0000-0000-000000000000")).rejects.toMatchObject({ codigo: "NAO_ENCONTRADA" });
   });
 });
