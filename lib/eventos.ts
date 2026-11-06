@@ -7,7 +7,8 @@
  * também consulta o servidor de tempos em tempos.
  */
 export type Evento = {
-  tipo: "recebido";
+  /** Entrou na conta da pessoa, ou saiu dela por ação de outra (Tomar, saque, estorno). */
+  tipo: "recebido" | "debitado";
   transacaoId: string;
   valor: number;
   de: string;

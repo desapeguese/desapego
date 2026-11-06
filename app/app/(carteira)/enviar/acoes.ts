@@ -2,8 +2,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { enviarEmail } from "@/lib/email";
-import { publicar } from "@/lib/eventos";
+import { avisarMovimento } from "@/lib/avisos";
 import { moeda } from "@/lib/formato";
 import { ErroLedger, transferir } from "@/lib/ledger";
 import { permitir } from "@/lib/limite";
@@ -75,7 +74,7 @@ export async function enviar(dados: {
       // com a de outra.
       chaveIdempotencia: `${pessoa.id}:${chave}`,
     });
-    if (!repetida) avisarRecebimento(transacao.paraConta, transacao.id, transacao.valor, pessoa.name, descricao);
+    if (!repetida) avisarMovimento(transacao, { id: pessoa.id, nome: pessoa.name });
     return { ok: true, transacaoId: transacao.id };
   } catch (erro) {
     if (!(erro instanceof ErroLedger)) throw erro;
@@ -87,25 +86,4 @@ export async function enviar(dados: {
     }
     return { ok: false, erro: erro.message };
   }
-}
-
-/** Aviso na tela (se o app estiver aberto) e por e-mail. Nunca falha o envio. */
-function avisarRecebimento(paraId: string, transacaoId: string, valor: number, de: string, descricao: string) {
-  publicar(paraId, { tipo: "recebido", transacaoId, valor, de });
-  void (async () => {
-    const [destino] = await db
-      .select({ email: schema.user.email })
-      .from(schema.user)
-      .where(eq(schema.user.id, paraId));
-    if (!destino) return;
-    const base = process.env.BETTER_AUTH_URL ?? "";
-    await enviarEmail({
-      para: destino.email,
-      assunto: `Você recebeu ${moeda(valor)} de ${de}`,
-      texto:
-        `${de} enviou ${moeda(valor)} para você na Moeda Desapego.` +
-        (descricao ? `\n\nDescrição: ${descricao}` : "") +
-        `\n\nVeja sua carteira: ${base}/app`,
-    });
-  })().catch((erro) => console.error("[aviso de recebimento] e-mail não enviado:", erro));
 }

@@ -1,11 +1,19 @@
 import Link from "next/link";
 
 /** Cabeçalho das telas internas: botão redondo de voltar à esquerda, título no centro. */
-export function Topo({ titulo, children }: { titulo: string; children?: React.ReactNode }) {
+export function Topo({
+  titulo,
+  children,
+  voltar = { href: "/app", rotulo: "Voltar à carteira" },
+}: {
+  titulo: string;
+  children?: React.ReactNode;
+  voltar?: { href: string; rotulo: string };
+}) {
   return (
     <header className="app-topo">
       <div className="topo-linha">
-        <Link className="voltar" href="/app" aria-label="Voltar à carteira">
+        <Link className="voltar" href={voltar.href} aria-label={voltar.rotulo}>
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path
               d="M15 5l-7 7 7 7"

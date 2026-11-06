@@ -3,18 +3,10 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/lib/db";
+import { normalizarNome, normalizarTelefone } from "@/lib/pessoas";
 import { pessoaLogada, VERSAO_TERMOS } from "@/lib/sessao";
 
 export type EstadoCadastro = { erro: string; nome: string; telefone: string };
-
-/** Só dígitos, com DDI. Aceita DDD + número (10 ou 11 dígitos) ou já com 55. */
-function normalizarTelefone(bruto: string): string | null | "invalido" {
-  const digitos = bruto.replace(/\D/g, "");
-  if (!digitos) return null;
-  if (digitos.length === 10 || digitos.length === 11) return `55${digitos}`;
-  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) return digitos;
-  return "invalido";
-}
 
 export async function completarCadastro(
   _anterior: EstadoCadastro,
@@ -24,13 +16,12 @@ export async function completarCadastro(
   if (!pessoa) redirect("/app/entrar");
   if (pessoa.termosAceitosEm) redirect("/app");
 
-  const nome = String(dados.get("nome") ?? "").trim().replace(/\s+/g, " ");
+  const nomeBruto = String(dados.get("nome") ?? "");
   const telefoneBruto = String(dados.get("telefone") ?? "").trim();
-  const falha = (erro: string) => ({ erro, nome, telefone: telefoneBruto });
+  const falha = (erro: string) => ({ erro, nome: nomeBruto, telefone: telefoneBruto });
 
-  if (nome.length > 120 || nome.split(" ").filter((p) => p.length >= 2).length < 2) {
-    return falha("Informe seu nome completo (nome e sobrenome).");
-  }
+  const nome = normalizarNome(nomeBruto);
+  if (!nome) return falha("Informe seu nome completo (nome e sobrenome).");
   const telefone = normalizarTelefone(telefoneBruto);
   if (telefone === "invalido") {
     return falha("Telefone inválido. Use DDD + número, ou deixe em branco.");

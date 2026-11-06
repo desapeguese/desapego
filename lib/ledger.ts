@@ -189,7 +189,7 @@ export async function transferir(
       throw new ErroLedger("SEM_PERMISSAO", "Operação restrita ao Caixa.");
     }
     if (ENTRA_NO_OPERADOR.has(tipo) && operador.papel === "caixa" && contraparte.papel === "admin") {
-      throw new ErroLedger("SEM_PERMISSAO", "O Caixa não pode tomar de um Admin.");
+      throw new ErroLedger("SEM_PERMISSAO", "O Caixa não pode receber nem sacar de um Admin.");
     }
 
     const saiDoOperador = SAI_DO_OPERADOR.has(tipo);
@@ -489,4 +489,78 @@ export async function obterTransacaoDe(
     contraparteNome: contraparte?.nome ?? "",
     estornoDe: t.estornoDe,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Leitura para Caixa e Admin
+// ---------------------------------------------------------------------------
+
+export type TransacaoCompleta = Transacao & {
+  deNome: string;
+  paraNome: string;
+  operadorNome: string;
+  /** Id do estorno desta transação, se já houve. */
+  estornadaPor: string | null;
+};
+
+async function completar(db: Banco, filtro: ReturnType<typeof sql>, limite: number) {
+  const resultado = await db.execute(sql`
+    select t.id, t.criada_em, t.tipo, t.de_conta, t.para_conta, t.valor, t.descricao,
+           t.operador_id, t.estorno_de, t.chave_idempotencia,
+           de.name as de_nome, para.name as para_nome, op.name as operador_nome,
+           (select e.id from ${transacao} e where e.estorno_de = t.id) as estornada_por
+    from ${transacao} t
+    join ${user} de on de.id = t.de_conta
+    join ${user} para on para.id = t.para_conta
+    join ${user} op on op.id = t.operador_id
+    where ${filtro}
+    order by t.criada_em desc
+    limit ${limite}
+  `);
+  const linhas = ("rows" in resultado ? resultado.rows : resultado) as unknown as Record<string, never>[];
+  return linhas.map(
+    (l): TransacaoCompleta => ({
+      id: l.id,
+      criadaEm: new Date(l.criada_em),
+      tipo: l.tipo,
+      deConta: l.de_conta,
+      paraConta: l.para_conta,
+      valor: l.valor,
+      descricao: l.descricao,
+      operadorId: l.operador_id,
+      estornoDe: l.estorno_de,
+      chaveIdempotencia: l.chave_idempotencia,
+      deNome: l.de_nome,
+      paraNome: l.para_nome,
+      operadorNome: l.operador_nome,
+      estornadaPor: l.estornada_por,
+    }),
+  );
+}
+
+/** Uma transação com os nomes das pontas e de quem operou. Sem checar quem pede. */
+export async function obterTransacaoCompleta(db: Banco, id: string): Promise<TransacaoCompleta | null> {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const [achada] = await completar(db, sql`t.id = ${id}::uuid`, 1);
+  return achada ?? null;
+}
+
+/**
+ * Acha transações pelo número curto do comprovante ("910A-86B5"): os oito
+ * primeiros dígitos do id. Em geral devolve uma; mais de uma é coincidência
+ * rara, e o Caixa escolhe pela data e pelas pessoas.
+ */
+export async function buscarTransacoesPorNumero(db: Banco, numero: string): Promise<TransacaoCompleta[]> {
+  const hex = numero.replace(/[^0-9a-f]/gi, "").toLowerCase();
+  if (hex.length !== 8) return [];
+  return completar(db, sql`t.id::text like ${hex + "%"}`, 5);
+}
+
+/** Quem pode estornar: o Admin, qualquer uma; o Caixa, só as que ele operou. */
+export function podeEstornar(
+  ator: { id: string; papel: Papel },
+  t: Pick<TransacaoCompleta, "tipo" | "operadorId" | "estornadaPor">,
+): boolean {
+  if (t.tipo === "estorno" || t.estornadaPor) return false;
+  return ator.papel === "admin" || (ator.papel === "caixa" && t.operadorId === ator.id);
 }

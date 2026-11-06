@@ -14,8 +14,12 @@ export type Pessoa = typeof schema.user.$inferSelect;
  * cache). Devolve `null` sem sessão ou com conta desativada.
  */
 export async function pessoaLogada(): Promise<Pessoa | null> {
+  // `headers()` vem primeiro: é ele que diz ao Next que a página depende do
+  // pedido. Com a checagem do segredo antes, o build (que roda sem variáveis)
+  // tentaria pré-renderizar a página e quebraria.
+  const cabecalhos = await headers();
   exigirSegredo();
-  const sessao = await auth.api.getSession({ headers: await headers() });
+  const sessao = await auth.api.getSession({ headers: cabecalhos });
   if (!sessao) return null;
 
   const [pessoa] = await db.select().from(schema.user).where(eq(schema.user.id, sessao.user.id));

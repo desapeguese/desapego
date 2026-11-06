@@ -1470,3 +1470,115 @@ a.link {
 .texto-legal li + li {
   margin-top: 6px;
 }
+
+/* ---------- Caixa ---------- */
+
+.busca {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.busca .campo {
+  flex: 1;
+  min-width: 0;
+}
+
+.app .busca .botao {
+  flex: none;
+  min-height: 56px;
+  padding-inline: 18px;
+  font-size: 1.15rem;
+}
+
+.lista-rotulo {
+  margin-top: 14px;
+}
+
+.busca + .extrato,
+.busca + .vazio {
+  margin-top: 12px;
+}
+
+.acoes--quatro {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app .acoes--quatro .botao {
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.etiquetas {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.etiquetas:empty {
+  display: none;
+}
+
+.selo--alerta {
+  background: #f5d25a;
+}
+
+.selo--neutro {
+  background: transparent;
+  border-style: dashed;
+}
+
+.feito {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1.5px solid var(--tinta-escura);
+  border-radius: 14px;
+  background: var(--lima);
+  font-weight: 600;
+}
+
+.aceite--alerta {
+  padding: 12px 14px;
+  border: 1.5px solid var(--tinta-escura);
+  border-radius: 12px;
+  background: #f5d25a;
+}
+
+.auditoria {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auditoria li {
+  padding: 10px 0;
+  border-top: 1px solid var(--linha);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.auditoria small {
+  font-size: 0.82rem;
+  color: var(--tinta-suave);
+}
+
+.destinatario > .rotulo {
+  flex: none;
+}
+
+/* O sublinhado fica só no nome, não nas iniciais do avatar. */
+.pessoa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.pessoa-link > span:last-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

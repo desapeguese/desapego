@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { moeda } from "@/lib/formato";
 
-type Recebido = { transacaoId: string; valor: number; de: string };
+type Aviso = { tipo: "recebido" | "debitado"; transacaoId: string; valor: number; de: string };
 
 /**
  * Mantém a carteira em dia sem recarregar: escuta /api/eventos e, ao receber,
@@ -14,15 +14,17 @@ type Recebido = { transacaoId: string; valor: number; de: string };
  */
 export function TempoReal() {
   const router = useRouter();
-  const [recebido, setRecebido] = useState<Recebido | null>(null);
+  const [recebido, setRecebido] = useState<Aviso | null>(null);
   const [semConexao, setSemConexao] = useState(false);
 
   useEffect(() => {
     const fonte = new EventSource("/api/eventos");
-    fonte.addEventListener("recebido", (evento) => {
+    const aoAvisar = (evento: Event) => {
       setRecebido(JSON.parse((evento as MessageEvent).data));
       router.refresh();
-    });
+    };
+    fonte.addEventListener("recebido", aoAvisar);
+    fonte.addEventListener("debitado", aoAvisar);
 
     const reserva = setInterval(() => {
       if (fonte.readyState !== EventSource.OPEN && document.visibilityState === "visible") {
@@ -53,8 +55,10 @@ export function TempoReal() {
       {recebido && (
         <div className="aviso-flutuante">
           <Link href={`/app/transacao/${recebido.transacaoId}`} onClick={() => setRecebido(null)}>
-            <strong>Você recebeu {moeda(recebido.valor)}</strong>
-            <span>de {recebido.de}</span>
+            <strong>
+              {recebido.tipo === "recebido" ? "Você recebeu" : "Saíram"} {moeda(recebido.valor)}
+            </strong>
+            <span>{recebido.tipo === "recebido" ? `de ${recebido.de}` : `por ${recebido.de}`}</span>
           </Link>
           <button type="button" aria-label="Fechar aviso" onClick={() => setRecebido(null)}>
             ×

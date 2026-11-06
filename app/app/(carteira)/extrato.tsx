@@ -5,7 +5,14 @@ import { Avatar, AvatarCaixa } from "../pecas";
 
 const COM_O_CAIXA = new Set(["dar", "tomar", "deposito_cedula", "saque_cedula"]);
 
-export function Extrato({ linhas }: { linhas: LinhaExtrato[] }) {
+export function Extrato({
+  linhas,
+  base = "/app/transacao",
+}: {
+  linhas: LinhaExtrato[];
+  /** Para onde cada linha leva: o comprovante da pessoa ou a visão do Caixa. */
+  base?: string;
+}) {
   return (
     <ul className="extrato">
       {linhas.map((linha) => {
@@ -20,7 +27,7 @@ export function Extrato({ linhas }: { linhas: LinhaExtrato[] }) {
               : NOME_TIPO[linha.tipo];
         return (
           <li key={linha.id}>
-            <Link className="extrato-linha" href={`/app/transacao/${linha.id}`}>
+            <Link className="extrato-linha" href={`${base}/${linha.id}`}>
               {COM_O_CAIXA.has(linha.tipo) ? <AvatarCaixa /> : <Avatar id={linha.contraparteId} nome={nome} />}
               <span className="extrato-texto">
                 <span className="extrato-nome">{nome}</span>

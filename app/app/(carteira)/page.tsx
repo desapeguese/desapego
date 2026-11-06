@@ -70,6 +70,12 @@ export default async function Carteira() {
         </Link>
       </nav>
 
+      {pessoa.papel !== "usuario" && (
+        <Link className="botao botao--contorno" href="/app/caixa">
+          Abrir o Caixa
+        </Link>
+      )}
+
       <section aria-labelledby="titulo-ultimas">
         <div className="secao-cabeca">
           <h2 className="secao-titulo" id="titulo-ultimas">Últimas trocas</h2>

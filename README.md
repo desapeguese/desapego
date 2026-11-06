@@ -6,10 +6,10 @@ Desapegue-se.
 Live: <https://desapego.festivaldesapeguese.com.br>
 
 O escopo completo está em [docs/PRD.md](docs/PRD.md). Hoje o repositório tem a
-landing e as **Etapas 1 e 2** do app: cadastro, login sem senha, perfis, o
-livro de transações e a carteira (saldo, histórico, receber por QR, enviar pela
-câmera ou e-mail, avisos em tempo real, PWA instalável). As telas de Caixa e
-Admin são as próximas etapas.
+landing e as **Etapas 1 a 3** do app: cadastro, login sem senha, perfis, o
+livro de transações, a carteira (saldo, histórico, receber por QR, enviar,
+avisos em tempo real, PWA instalável) e o Caixa (pessoas, Pagar, Receber, cédulas,
+estorno, registro da conta). Admin, passkey e 2FA são as próximas etapas.
 
 ## Stack
 
@@ -80,6 +80,14 @@ cores das pessoas da roda nos avatares. O desenho de referência é o canvas
   permissões por perfil, idempotência e estorno, e é isso que `npm test` cobre.
 - **`transacao` é imutável.** Um trigger no banco recusa `UPDATE`, `DELETE` e
   `TRUNCATE`; erros se corrigem com estorno.
+- **Toda mudança em uma pessoa passa por `lib/pessoas.ts`** e deixa uma linha
+  em `auditoria`. O Caixa só edita e desativa usuário comum; o Admin, qualquer
+  um; o último Admin ativo não pode ser desativado.
+- **Trocar o e-mail de alguém troca a chave de login:** as sessões e os
+  vínculos (Google) antigos são apagados, o e-mail novo só vale depois do
+  primeiro login com código, e o endereço antigo é avisado.
+- **Ninguém é apagado.** Desativar bloqueia login e transações e preserva
+  saldo e histórico.
 - **Papel, `ativo` e aceite dos termos nunca vêm do cliente.** São lidos do
   banco a cada pedido em `lib/sessao.ts`; toda página do app começa por
   `exigirPessoa()`.
@@ -103,6 +111,7 @@ cores das pessoas da roda nos avatares. O desenho de referência é o canvas
 | `app/layout.tsx` | `<html>`, fonts, and all SEO/OpenGraph metadata. |
 | `app/globals.css` | Every style. No CSS framework. A landing é escura; o app (`.app`) é claro, ver “Identidade visual”. |
 | `app/app/(carteira)/` | Páginas que exigem login: carteira, `receber/`, `enviar/`, `historico/`, `transacao/[id]/`, `conta/`. |
+| `app/app/(carteira)/caixa/` | O Caixa, só para os perfis Caixa e Admin: painel e busca, `ler/` (QR), `nova/`, `pessoa/[id]/` (ficha, `editar/`, `operacao/[tipo]/`) e `transacao/[id]/` (com estorno). |
 | `app/app/pecas.tsx`, `app/fontes.ts` | Peças visuais compartilhadas (a nota, avatares, barra inferior) e as fontes do app. |
 | `app/app/entrar/`, `app/app/cadastro/` | Login e primeiro acesso. |
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
@@ -111,10 +120,12 @@ cores das pessoas da roda nos avatares. O desenho de referência é o canvas
 | `app/termos/` | Termos de uso e privacidade (rascunho, ver abaixo). |
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
+| `lib/pessoas.ts` | Gestão de pessoas pelo Caixa e Admin: busca, cadastro, edição, desativação e auditoria, com as permissões por perfil. |
+| `lib/avisos.ts` | Avisos de movimento e de troca de dados, na tela e por e-mail. |
 | `lib/auth.ts`, `lib/sessao.ts` | Configuração do login e leitura da pessoa logada. |
 | `lib/db/schema.ts` | Esquema do banco. |
 | `drizzle/` | Migrações SQL, aplicadas por `scripts/migrar.mjs`. |
-| `tests/` | Testes do livro. |
+| `tests/` | Testes do livro e da gestão de pessoas. |
 | `app/icon.png` | Favicon (the “1” numeral off the cédula). |
 | `public/cedula-*-v2.webp` | The 2026 cédula artwork. Suffixed because the cache header is `immutable` — a new design needs a new filename, never an overwrite. |
 | `public/og-v2.jpg` | 1200×630 social preview card, built from the cédula front. |
@@ -173,7 +184,7 @@ railway up
 
 ## Not here yet
 
-- Etapas 3 a 5 do [PRD](docs/PRD.md): Caixa, Admin, passkey e 2FA.
+- Etapas 4 e 5 do [PRD](docs/PRD.md): Admin (perfis, limites, relatórios), passkey e 2FA, edições do festival.
 - **Ícone definitivo do app.** Os ícones do PWA são um "1" desenhado em código,
   provisório até existir a arte oficial em alta resolução.
 - **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
