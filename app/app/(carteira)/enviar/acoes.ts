@@ -2,9 +2,11 @@
 
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { tem2FA } from "@/lib/auth";
 import { avisarMovimento } from "@/lib/avisos";
 import { moeda } from "@/lib/formato";
-import { ErroLedger, transferir } from "@/lib/ledger";
+import { ErroLedger, obterSaldo, transferir } from "@/lib/ledger";
+import { SALDO_QUE_EXIGE_2FA } from "@/lib/formato";
 import { permitir } from "@/lib/limite";
 import { pessoaComCadastro } from "@/lib/sessao";
 
@@ -62,6 +64,13 @@ export async function enviar(dados: {
   if (descricao.length > 140) return { ok: false, erro: "A descrição tem no máximo 140 letras." };
   const chave = String(dados.chave ?? "");
   if (chave.length < 16 || chave.length > 64) return { ok: false, erro: "Pedido inválido." };
+
+  // Com saldo alto, a conta precisa de segundo fator antes de enviar (receber
+  // continua livre). A tela avisa antes; isto é o que garante.
+  const { saldo } = await obterSaldo(db, pessoa.id);
+  if (saldo > SALDO_QUE_EXIGE_2FA && !(await tem2FA(pessoa.id, pessoa.twoFactorEnabled))) {
+    return { ok: false, erro: "PROTECAO_NECESSARIA" };
+  }
 
   try {
     const { transacao, repetida } = await transferir(db, {

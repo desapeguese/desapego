@@ -1,10 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { emailOTP } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { emailOTP, twoFactor } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
+import { count, eq } from "drizzle-orm";
 import { cadastroAberto, ehAdminInicial } from "./cadastro";
 import { db, schema } from "./db";
 import { enviarEmail } from "./email";
@@ -47,12 +48,86 @@ export function exigirSegredo() {
   }
 }
 
+/**
+ * Segundo fator (seção 4.1 do PRD).
+ *
+ * Quem tem passkey ou app autenticador "tem 2FA". Cada sessão guarda se já
+ * provou o segundo fator (`session.segundoFator`): entrar com passkey prova na
+ * hora; entrar com código de e-mail ou Google deixa a sessão pendente, e
+ * lib/sessao.ts manda a pessoa para /app/verificar.
+ */
+export async function tem2FA(usuarioId: string, twoFactorEnabled: boolean | null | undefined): Promise<boolean> {
+  if (twoFactorEnabled) return true;
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(schema.passkey)
+    .where(eq(schema.passkey.userId, usuarioId));
+  return total > 0;
+}
+
+/** Rotas que provam o segundo fator quando terminam bem. */
+const PROVAM_O_FATOR = new Set([
+  "/passkey/verify-authentication",
+  "/passkey/verify-registration",
+  "/two-factor/verify-totp",
+  "/two-factor/verify-backup-code",
+]);
+/** Rotas de quem ainda está provando: não podem exigir o que elas mesmas concedem. */
+const LIVRES = new Set([
+  "/passkey/generate-authenticate-options",
+  "/passkey/verify-authentication",
+  "/two-factor/verify-totp",
+  "/two-factor/verify-backup-code",
+]);
+
+const marcarSessao = (sessaoId: string) =>
+  db.update(schema.session).set({ segundoFator: true }).where(eq(schema.session.id, sessaoId));
+
+const enderecoPublico = process.env.BETTER_AUTH_URL ? new URL(process.env.BETTER_AUTH_URL) : null;
+
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg", schema }),
 
-  session: { expiresIn: 90 * DIA, updateAge: DIA },
+  session: {
+    expiresIn: 90 * DIA,
+    updateAge: DIA,
+    additionalFields: {
+      segundoFator: { type: "boolean", required: false, defaultValue: false, input: false },
+    },
+  },
+
+  hooks: {
+    // Quem já tem 2FA e está numa sessão que ainda não o provou não pode
+    // mexer nos próprios fatores (cadastrar outra passkey, desligar o
+    // autenticador...). Sem isto, bastaria o e-mail da vítima para trocar o
+    // segundo fator dela pela API, sem passar pelas telas.
+    before: createAuthMiddleware(async (ctx) => {
+      const caminho = ctx.path ?? "";
+      if (!(caminho.startsWith("/passkey/") || caminho.startsWith("/two-factor/")) || LIVRES.has(caminho)) return;
+      const atual = await getSessionFromCtx(ctx);
+      if (!atual) return;
+      const sessao = atual.session as typeof atual.session & { segundoFator?: boolean };
+      const pessoa = atual.user as typeof atual.user & { twoFactorEnabled?: boolean };
+      if (!sessao.segundoFator && (await tem2FA(pessoa.id, pessoa.twoFactorEnabled))) {
+        throw new APIError("FORBIDDEN", {
+          code: "SEGUNDO_FATOR_PENDENTE",
+          message: "Confirme sua identidade antes de mudar a proteção da conta.",
+        });
+      }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      const caminho = ctx.path ?? "";
+      if (!PROVAM_O_FATOR.has(caminho)) return;
+      const devolvido = ctx.context.returned;
+      if (devolvido instanceof Error) return;
+      // O login com passkey cria a sessão na própria rota; as outras rotas
+      // provam o fator para a sessão que já existia.
+      const sessaoId = ctx.context.newSession?.session.id ?? (await getSessionFromCtx(ctx))?.session.id;
+      if (sessaoId) await marcarSessao(sessaoId);
+    }),
+  },
 
   // O proxy do Railway grava o IP do visitante em X-Real-IP, sobrescrevendo o
   // que o cliente mandar. O X-Forwarded-For chega com vários endereços e o
@@ -124,6 +199,17 @@ export const auth = betterAuth({
       // contido pelo limite por endereço, dentro de `sendVerificationOTP`.
       "/email-otp/send-verification-otp": { window: 60, max: 60 },
       "/sign-in/email-otp": { window: 60, max: 120 },
+      // O padrão do Better Auth aqui é 3 pedidos a cada 10 s por IP, pouco
+      // para um evento inteiro atrás do mesmo Wi-Fi. Quem segura a força
+      // bruta no código do autenticador é o bloqueio por conta do próprio
+      // plugin (tentativas erradas seguidas travam a verificação).
+      "/two-factor/verify-totp": { window: 60, max: 60 },
+      "/two-factor/verify-backup-code": { window: 60, max: 30 },
+      "/two-factor/enable": { window: 60, max: 30 },
+      "/passkey/generate-authenticate-options": { window: 60, max: 120 },
+      "/passkey/verify-authentication": { window: 60, max: 120 },
+      "/passkey/generate-register-options": { window: 60, max: 60 },
+      "/passkey/verify-registration": { window: 60, max: 60 },
     },
   },
 
@@ -161,6 +247,15 @@ export const auth = betterAuth({
         }
       },
     }),
+    passkey({
+      rpName: "Moeda Desapego",
+      // A passkey fica presa ao domínio: vale no navegador e no app instalado.
+      rpID: enderecoPublico?.hostname ?? "localhost",
+      origin: enderecoPublico?.origin ?? null,
+    }),
+    // Sem senha no app: ativar e desativar o autenticador não pede senha. Quem
+    // protege essas rotas é o `hooks.before` acima.
+    twoFactor({ issuer: "Moeda Desapego", allowPasswordless: true }),
     // Precisa ser o último: grava os cookies de sessão em server actions.
     nextCookies(),
   ],

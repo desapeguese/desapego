@@ -34,6 +34,9 @@ export const user = pgTable(
     createdAt: instante("created_at").notNull().defaultNow(),
     updatedAt: instante("updated_at").notNull().defaultNow(),
 
+    // Do plugin de dois fatores: verdadeiro quando há app autenticador ativo.
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+
     telefone: text("telefone"),
     papel: text("papel", { enum: PAPEIS }).notNull().default("usuario"),
     ativo: boolean("ativo").notNull().default(true),
@@ -59,6 +62,9 @@ export const session = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    // Nosso: esta sessão já provou o segundo fator (entrou com passkey, ou
+    // digitou o código do autenticador ou de recuperação). Ver lib/sessao.ts.
+    segundoFator: boolean("segundo_fator").notNull().default(false),
   },
   (t) => [index("session_user_idx").on(t.userId)],
 );
@@ -96,6 +102,44 @@ export const verification = pgTable(
     updatedAt: instante("updated_at").notNull().defaultNow(),
   },
   (t) => [index("verification_identifier_idx").on(t.identifier)],
+);
+
+/** Passkeys (digital, rosto ou PIN do aparelho). Tabela do plugin de passkey. */
+export const passkey = pgTable(
+  "passkey",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    counter: integer("counter").notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text("transports"),
+    createdAt: instante("created_at").defaultNow(),
+    aaguid: text("aaguid"),
+  },
+  (t) => [index("passkey_user_idx").on(t.userId), index("passkey_credential_idx").on(t.credentialID)],
+);
+
+/** App autenticador (TOTP) e códigos de recuperação. Tabela do plugin de dois fatores. */
+export const twoFactor = pgTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: boolean("verified").notNull().default(true),
+    failedVerificationCount: integer("failed_verification_count").notNull().default(0),
+    lockedUntil: instante("locked_until"),
+  },
+  (t) => [index("two_factor_user_idx").on(t.userId), index("two_factor_secret_idx").on(t.secret)],
 );
 
 // ---------------------------------------------------------------------------

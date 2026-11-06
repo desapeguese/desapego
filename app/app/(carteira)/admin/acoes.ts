@@ -1,11 +1,18 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { avisarPerfilAlterado } from "@/lib/avisos";
+import { avisarPerfilAlterado, avisarSegundoFatorRemovido } from "@/lib/avisos";
 import { ehAdminInicial } from "@/lib/cadastro";
 import { db } from "@/lib/db";
 import type { Papel } from "@/lib/db/schema";
-import { definirLimite, definirLimitePadraoCaixa, definirPapel, ErroPessoa, obterPessoa } from "@/lib/pessoas";
+import {
+  definirLimite,
+  definirLimitePadraoCaixa,
+  definirPapel,
+  ErroPessoa,
+  obterPessoa,
+  removerSegundoFator,
+} from "@/lib/pessoas";
 import { pessoaComCadastro } from "@/lib/sessao";
 
 /** Quem está logado, se for Admin. O papel vem do banco a cada pedido. */
@@ -69,4 +76,20 @@ export async function mudarLimitePadrao(dados: FormData): Promise<void> {
     aviso = "erro";
   }
   redirect(`/app/admin?aviso=${aviso}`);
+}
+
+export async function resetarSegundoFator(dados: FormData): Promise<void> {
+  const alvoId = String(dados.get("id") ?? "");
+  const ator = await admin();
+  if (!ator) redirect("/app");
+
+  let aviso = "fator";
+  try {
+    const { email, removeu } = await removerSegundoFator(db, ator, alvoId);
+    if (removeu) avisarSegundoFatorRemovido(email, ator.name);
+  } catch (erro) {
+    if (!(erro instanceof ErroPessoa)) throw erro;
+    aviso = `erro:${erro.codigo}`;
+  }
+  redirect(ficha(alvoId, aviso));
 }

@@ -1861,3 +1861,73 @@ a.link {
   padding-inline: 6px;
   font-size: 1.05rem;
 }
+
+/* ---------- Segurança da conta ---------- */
+
+.protecao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--alerta);
+  text-align: center;
+}
+
+.protecao .instalar-texto {
+  color: var(--tinta-escura);
+}
+
+.linha-acao {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.formulario h3.rotulo {
+  margin-top: 6px;
+  font-size: 0.9rem;
+}
+
+.qr-autenticador {
+  align-self: center;
+  width: min(100%, 220px);
+  padding: 8px;
+  border-radius: 12px;
+  background: #fff;
+  line-height: 0;
+}
+
+.qr-autenticador svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chave {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.recuperacao {
+  padding: 14px;
+  border: 1.5px solid var(--tinta-escura);
+  border-radius: 12px;
+  background: var(--lima);
+}
+
+.recuperacao p {
+  margin: 0 0 10px;
+}
+
+.recuperacao ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95rem;
+}

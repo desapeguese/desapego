@@ -57,3 +57,6 @@ export function corDaPessoa(id: string): string {
   for (let i = 0; i < id.length; i++) soma = (soma * 31 + id.charCodeAt(i)) >>> 0;
   return CORES_DA_RODA[soma % CORES_DA_RODA.length];
 }
+
+/** Acima deste saldo, enviar exige passkey ou app autenticador (seção 4.1 do PRD). */
+export const SALDO_QUE_EXIGE_2FA = 100;

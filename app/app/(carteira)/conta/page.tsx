@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
-import { corDaPessoa, iniciais, numeroDeSerie } from "@/lib/formato";
+import { desc, eq } from "drizzle-orm";
+import { db, schema } from "@/lib/db";
+import { corDaPessoa, dataHora, iniciais, numeroDeSerie } from "@/lib/formato";
 import { obterSaldo } from "@/lib/ledger";
 import { exigirPessoa } from "@/lib/sessao";
 import { BotaoSair } from "../botao-sair";
 import { Topo } from "../topo";
+import { Seguranca } from "./seguranca";
 
 const NOME_PAPEL = { usuario: null, caixa: "Caixa", admin: "Admin" } as const;
 
@@ -12,6 +14,11 @@ export default async function Conta() {
   const pessoa = await exigirPessoa();
   const { numero } = await obterSaldo(db, pessoa.id);
   const papel = NOME_PAPEL[pessoa.papel];
+  const passkeys = await db
+    .select({ id: schema.passkey.id, nome: schema.passkey.name, criadaEm: schema.passkey.createdAt })
+    .from(schema.passkey)
+    .where(eq(schema.passkey.userId, pessoa.id))
+    .orderBy(desc(schema.passkey.createdAt));
 
   return (
     <>
@@ -41,6 +48,15 @@ export default async function Conta() {
           <dd className="serie">{numeroDeSerie(pessoa.createdAt, numero)}</dd>
         </div>
       </dl>
+
+      <Seguranca
+        passkeys={passkeys.map((p) => ({
+          id: p.id,
+          nome: p.nome || "Passkey",
+          criadaEm: p.criadaEm ? dataHora(p.criadaEm).split(",")[0] : "—",
+        }))}
+        autenticadorAtivo={pessoa.twoFactorEnabled}
+      />
 
       <p className="app-aviso">
         Precisa corrigir seus dados? Procure o Caixa do Festival.{" "}

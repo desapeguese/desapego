@@ -34,6 +34,8 @@ export function descreverAuditoria(linha: Pick<LinhaAuditoria, "acao" | "detalhe
       const para = d.para as Record<string, string>;
       return `Edição alterada: ${de.nome} (${de.inicio} a ${de.fim}) passou a ${para.nome} (${para.inicio} a ${para.fim})`;
     }
+    case "segundo_fator_removido":
+      return "Proteção da conta removida (passkey e app autenticador)";
     case "estorno":
       return `Estorno feito (${String(d.motivo ?? "sem motivo")})`;
     case "dados_alterados":

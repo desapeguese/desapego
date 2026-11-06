@@ -5,11 +5,10 @@ Desapegue-se.
 
 Live: <https://desapego.festivaldesapeguese.com.br>
 
-O escopo completo está em [docs/PRD.md](docs/PRD.md). Hoje o repositório tem a
-landing e as **Etapas 1 a 4** do app: cadastro, login sem senha, perfis, o
-livro de transações, a carteira, o Caixa e o Admin (perfis, limites,
-indicadores, relatório de transações com CSV e registro de auditoria). Faltam
-passkey e 2FA, edições do festival e o gráfico por período.
+O escopo completo está em [docs/PRD.md](docs/PRD.md), e as cinco etapas dele
+estão implementadas: cadastro e login sem senha, o livro de transações, a
+carteira, o Caixa, o Admin (com relatórios, gráfico e edições do festival) e o
+segundo fator (passkey e app autenticador).
 
 ## Stack
 
@@ -17,7 +16,7 @@ passkey e 2FA, edições do festival e o gráfico por período.
 |---|---|
 | Framework | Next.js 16 (App Router), React 19, TypeScript |
 | Banco | PostgreSQL, com Drizzle ORM e migrações SQL em `drizzle/` |
-| Login | Better Auth: código por e-mail e Google |
+| Login | Better Auth: código por e-mail, Google, passkey e app autenticador (TOTP) |
 | E-mail | Resend (API HTTP) |
 | Testes | Vitest, com PGlite (Postgres em WASM) |
 | Hosting | Railway (Railpack builder) |
@@ -102,6 +101,18 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 - **Trocar o e-mail de alguém troca a chave de login:** as sessões e os
   vínculos (Google) antigos são apagados, o e-mail novo só vale depois do
   primeiro login com código, e o endereço antigo é avisado.
+- **Segundo fator por sessão.** Quem tem passkey ou app autenticador "tem
+  2FA". Entrar com passkey prova o fator na hora; entrar com código de e-mail
+  ou Google deixa a sessão pendente, e toda página e ação do app a trata como
+  não logada até a prova em `/app/verificar` (`sessaoAtual` em `lib/sessao.ts`).
+- **Uma sessão pendente não mexe nos fatores.** O `hooks.before` de
+  `lib/auth.ts` recusa cadastrar passkey ou ligar e desligar o autenticador
+  pela API enquanto o fator não foi provado; sem isso, bastaria o e-mail da
+  vítima para trocar o segundo fator dela.
+- **Saldo acima de D$ 100 exige segundo fator para enviar** (receber continua
+  livre). A checagem está na ação de envio, não só na tela.
+- **Edições não tocam o livro.** Uma transação pertence à edição em cujo
+  intervalo de dias ela caiu; nada é gravado nela.
 - **Perfis e limites só mudam por um Admin**, nunca o próprio perfil, e o
   sistema não fica sem Admin ativo. Quem está em `ADMIN_EMAILS` é Admin pela
   configuração do servidor e não pode ser rebaixado pela tela.
@@ -137,7 +148,7 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/app/(carteira)/caixa/` | O Caixa, só para os perfis Caixa e Admin: painel e busca, `ler/` (QR), `nova/`, `pessoa/[id]/` (ficha, `editar/`, `operacao/[tipo]/`) e `transacao/[id]/` (com estorno). |
 | `app/app/(carteira)/admin/` | Só para Admin: painel com indicadores e limite padrão do Caixa, `relatorio/` (filtros, lista e `csv/`) e `auditoria/`. Perfil e limite individual ficam na ficha da pessoa, no Caixa. |
 | `app/app/pecas.tsx`, `app/fontes.ts` | Peças visuais compartilhadas (a nota, avatares, barra inferior) e as fontes do app. |
-| `app/app/entrar/`, `app/app/cadastro/` | Login e primeiro acesso. |
+| `app/app/entrar/`, `app/app/cadastro/`, `app/app/verificar/` | Login, primeiro acesso e a prova do segundo fator. |
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
 | `app/manifest.ts`, `public/sw.js`, `public/sem-conexao.html` | PWA: manifesto, service worker e a tela sem internet. |
 | `public/icone-*-v2.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs` a partir do símbolo do Festival. |
@@ -145,6 +156,7 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
 | `lib/pessoas.ts` | Gestão de pessoas pelo Caixa e Admin: busca, cadastro, edição, desativação e auditoria, com as permissões por perfil. |
+| `lib/edicoes.ts` | Edições do festival. |
 | `lib/relatorios.ts` | Indicadores, lista filtrada de transações e a montagem do CSV. Só leitura. |
 | `lib/avisos.ts` | Avisos de movimento e de troca de dados, na tela e por e-mail. |
 | `lib/auth.ts`, `lib/sessao.ts` | Configuração do login e leitura da pessoa logada. |
@@ -209,7 +221,6 @@ railway up
 
 ## Not here yet
 
-- Etapa 5 do [PRD](docs/PRD.md): passkey e 2FA, edições do festival (e o filtro por edição no relatório) e o gráfico por período.
 - **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
   revisão jurídica. Ao publicar o texto final, mude `VERSAO_TERMOS` em
   `lib/sessao.ts`: é ela que fica gravada em cada aceite.

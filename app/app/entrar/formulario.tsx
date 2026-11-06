@@ -78,6 +78,22 @@ export function FormularioEntrar({ googleAtivo }: { googleAtivo: boolean }) {
     router.refresh();
   }
 
+  async function entrarComPasskey() {
+    setOcupado(true);
+    setErro("");
+    setAviso("");
+    const resposta = await authClient.signIn.passkey();
+    if (resposta?.error) {
+      setOcupado(false);
+      // Cancelar a janela do aparelho não é erro: a pessoa só desistiu.
+      const cancelou = /cancel|abort|NotAllowed/i.test(JSON.stringify(resposta.error));
+      setErro(cancelou ? "" : "Não encontramos uma passkey deste aparelho para a sua conta. Entre com o código por e-mail.");
+      return;
+    }
+    router.replace("/app");
+    router.refresh();
+  }
+
   async function entrarComGoogle() {
     setOcupado(true);
     setErro("");
@@ -157,9 +173,12 @@ export function FormularioEntrar({ googleAtivo }: { googleAtivo: boolean }) {
       <button className="botao" type="submit" disabled={ocupado}>
         {ocupado ? "Enviando…" : "Receber código"}
       </button>
+      <p className="divisor">ou</p>
+      <button className="botao botao--contorno" type="button" onClick={entrarComPasskey} disabled={ocupado}>
+        Entrar com digital ou rosto
+      </button>
       {googleAtivo && (
         <>
-          <p className="divisor">ou</p>
           <button
             className="botao botao--contorno"
             type="button"

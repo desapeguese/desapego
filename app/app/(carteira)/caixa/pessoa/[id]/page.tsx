@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { corDaPessoa, dataHora, iniciais, inteiro, numeroCurto, numeroDeSerie } from "@/lib/formato";
 import { listarExtrato } from "@/lib/ledger";
-import { listarAuditoria, obterLimitePadraoCaixa, obterPessoa, podeGerenciar } from "@/lib/pessoas";
+import { listarAuditoria, obterLimitePadraoCaixa, obterPessoa, podeGerenciar, protecaoDaConta } from "@/lib/pessoas";
 import { Nota, tamanhoDoNumero } from "../../../../pecas";
 import { Extrato } from "../../../extrato";
 import { Topo } from "../../../topo";
-import { mudarLimite, mudarPapel } from "../../../admin/acoes";
+import { mudarLimite, mudarPapel, resetarSegundoFator } from "../../../admin/acoes";
 import { alternarAtivo } from "../../acoes";
 import { descreverAuditoria } from "../../auditoria-texto";
 import { exigirEquipe, NOME_PAPEL, VOLTAR_AO_CAIXA } from "../../equipe";
@@ -22,6 +22,7 @@ const AVISOS: Record<string, string> = {
   "erro:PROPRIA_CONTA": "Você não pode fazer isso na própria conta.",
   papel: "Perfil atualizado.",
   limite: "Limite atualizado.",
+  fator: "Proteção removida. A pessoa volta a entrar só com o código por e-mail.",
   "erro:LIMITE_INVALIDO": "Limite inválido: use um número inteiro de 0 a 1.000.000.",
   "erro:PAPEL_INVALIDO": "Perfil inválido.",
   "erro:ADMIN_INICIAL": "Este e-mail é Admin pela configuração do servidor (ADMIN_EMAILS) e não pode ser rebaixado por aqui.",
@@ -40,11 +41,13 @@ export default async function Pessoa({
   const pessoa = await obterPessoa(db, ator, id);
   if (!pessoa) notFound();
 
-  const [{ linhas, proximo }, auditoria, limitePadraoCaixa] = await Promise.all([
+  const [{ linhas, proximo }, auditoria, limitePadraoCaixa, protecao] = await Promise.all([
     listarExtrato(db, id, { limite: 10, cursor: cursor ?? null }),
     listarAuditoria(db, ator, id),
     obterLimitePadraoCaixa(db),
+    protecaoDaConta(db, ator, id),
   ]);
+  const temProtecao = protecao.passkeys > 0 || protecao.autenticador;
   const limiteDoPerfil = pessoa.papel === "caixa" ? limitePadraoCaixa : 0;
 
   const nome = pessoa.nome || "Sem nome";
@@ -191,6 +194,24 @@ export default async function Pessoa({
                   : `Limite individual: pode ficar até D$ ${pessoa.limiteNegativo} negativo. Deixe em branco para voltar ao padrão (D$ ${limiteDoPerfil}).`}
               </p>
             </>
+          )}
+
+          <p className="mensagem">
+            Proteção da conta:{" "}
+            {temProtecao
+              ? [
+                  protecao.passkeys > 0 && `${protecao.passkeys} passkey${protecao.passkeys > 1 ? "s" : ""}`,
+                  protecao.autenticador && "app autenticador",
+                ]
+                  .filter(Boolean)
+                  .join(" e ")
+              : "nenhuma."}
+          </p>
+          {temProtecao && !ehAPropria && (
+            <form action={resetarSegundoFator}>
+              <input type="hidden" name="id" value={id} />
+              <button className="link" type="submit">Remover a proteção (a pessoa perdeu o aparelho)</button>
+            </form>
           )}
         </section>
       )}

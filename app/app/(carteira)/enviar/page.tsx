@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { obterSaldo } from "@/lib/ledger";
+import { tem2FA } from "@/lib/auth";
+import { SALDO_QUE_EXIGE_2FA } from "@/lib/formato";
 import { exigirPessoa } from "@/lib/sessao";
+import { AvisoProtecao } from "../protecao";
 import { Topo } from "../topo";
 import { buscarDestinatario } from "./acoes";
 import { FluxoEnviar } from "./fluxo";
@@ -17,6 +20,15 @@ export default async function Enviar({
   const { para } = await searchParams;
   const codigo = Array.isArray(para) ? para[0] : para;
   const busca = codigo ? await buscarDestinatario({ para: codigo }) : null;
+
+  if (saldo > SALDO_QUE_EXIGE_2FA && !(await tem2FA(pessoa.id, pessoa.twoFactorEnabled))) {
+    return (
+      <>
+        <Topo titulo="Enviar" />
+        <AvisoProtecao bloqueia />
+      </>
+    );
+  }
 
   return (
     <>

@@ -73,3 +73,15 @@ export function avisarPerfilAlterado(email: string, de: string, para: string, op
       "Se você não esperava essa mudança, procure a organização do Festival.",
   }).catch((erro) => console.error("[aviso de perfil alterado] e-mail não enviado:", erro));
 }
+
+/** Avisa a pessoa de que a proteção (passkey, autenticador) da conta foi removida. */
+export function avisarSegundoFatorRemovido(email: string, operadorNome: string) {
+  enviarEmail({
+    para: email,
+    assunto: "A proteção da sua carteira Desapego foi removida",
+    texto:
+      `${operadorNome}, da administração, removeu a entrada com digital/rosto e o app autenticador da sua carteira da Moeda Desapego.\n\n` +
+      "Você volta a entrar só com o código por e-mail e pode ativar a proteção de novo em Sua conta > Segurança.\n" +
+      "Se você não pediu isso, procure a organização do Festival o quanto antes.",
+  }).catch((erro) => console.error("[aviso de segundo fator removido] e-mail não enviado:", erro));
+}

@@ -72,6 +72,8 @@ export function FluxoEnviar(props: {
     }
     if (!resposta.ok) {
       setOcupado(false);
+      // O saldo passou do limite com a tela aberta: recarregar mostra o aviso.
+      if (resposta.erro === "PROTECAO_NECESSARIA") return router.refresh();
       return setErro(resposta.erro);
     }
     router.replace(`/app/transacao/${resposta.transacaoId}?enviada=1`);

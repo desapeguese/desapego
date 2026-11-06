@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { corDaPessoa, iniciais, inteiro, moeda, numeroDeSerie } from "@/lib/formato";
+import { corDaPessoa, iniciais, inteiro, moeda, numeroDeSerie, SALDO_QUE_EXIGE_2FA } from "@/lib/formato";
 import { listarExtrato, obterSaldo } from "@/lib/ledger";
+import { tem2FA } from "@/lib/auth";
 import { exigirPessoa } from "@/lib/sessao";
 import { Marca, Navegacao, Nota, tamanhoDoNumero } from "../pecas";
 import { Extrato } from "./extrato";
 import { Instalar } from "./instalar";
+import { AvisoProtecao } from "./protecao";
 
 export default async function Carteira() {
   const pessoa = await exigirPessoa();
@@ -13,6 +15,7 @@ export default async function Carteira() {
     obterSaldo(db, pessoa.id),
     listarExtrato(db, pessoa.id, { limite: 5 }),
   ]);
+  const faltaProtecao = saldo > SALDO_QUE_EXIGE_2FA && !(await tem2FA(pessoa.id, pessoa.twoFactorEnabled));
   const saldoTexto = `${saldo < 0 ? "−" : ""}${inteiro(Math.abs(saldo))}`;
 
   return (
@@ -69,6 +72,8 @@ export default async function Carteira() {
           Enviar
         </Link>
       </nav>
+
+      {faltaProtecao && <AvisoProtecao />}
 
       {pessoa.papel !== "usuario" && (
         <nav className="acoes" aria-label="Equipe">

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import type { Banco } from "./db";
-import { account, auditoria, configuracao, conta, session, user, PAPEIS, type Papel } from "./db/schema";
+import { account, auditoria, configuracao, conta, passkey, session, twoFactor, user, PAPEIS, type Papel } from "./db/schema";
 import { CHAVE_LIMITE_CAIXA, LIMITE_PADRAO_CAIXA } from "./ledger";
 
 /**
@@ -465,4 +465,40 @@ export async function listarAuditoriaGlobal(
     alvoId: l.alvo_id,
     alvoNome: l.alvo_nome,
   }));
+}
+
+/**
+ * Para quem perdeu o aparelho: apaga passkeys, autenticador e códigos de
+ * recuperação. A pessoa volta a entrar só com o código por e-mail e pode
+ * ativar a proteção de novo. Devolve se havia algo para remover.
+ */
+export async function removerSegundoFator(db: Banco, ator: Ator, alvoId: string): Promise<{ email: string; removeu: boolean }> {
+  exigirAdmin(ator);
+  return db.transaction(async (tx) => {
+    const [alvo] = await tx.select().from(user).where(eq(user.id, alvoId)).for("update");
+    if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
+    const chaves = await tx.delete(passkey).where(eq(passkey.userId, alvoId)).returning({ id: passkey.id });
+    const totp = await tx.delete(twoFactor).where(eq(twoFactor.userId, alvoId)).returning({ id: twoFactor.id });
+    const removeu = chaves.length > 0 || totp.length > 0 || alvo.twoFactorEnabled;
+    if (!removeu) return { email: alvo.email, removeu };
+    await tx.update(user).set({ twoFactorEnabled: false, updatedAt: new Date() }).where(eq(user.id, alvoId));
+    await tx.insert(auditoria).values({
+      atorId: ator.id,
+      alvoId,
+      acao: "segundo_fator_removido",
+      detalhes: { passkeys: chaves.length, autenticador: totp.length > 0 || alvo.twoFactorEnabled },
+    });
+    return { email: alvo.email, removeu };
+  });
+}
+
+/** Quantas passkeys a pessoa tem e se o autenticador está ativo, para a ficha. */
+export async function protecaoDaConta(db: Banco, ator: Ator, alvoId: string) {
+  exigirEquipe(ator);
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(passkey)
+    .where(eq(passkey.userId, alvoId));
+  const [alvo] = await db.select({ ativo: user.twoFactorEnabled }).from(user).where(eq(user.id, alvoId));
+  return { passkeys: total, autenticador: alvo?.ativo ?? false };
 }

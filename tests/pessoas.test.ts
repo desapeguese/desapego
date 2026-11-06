@@ -16,6 +16,8 @@ import {
   listarAuditoriaGlobal,
   listarEquipe,
   obterLimitePadraoCaixa,
+  protecaoDaConta,
+  removerSegundoFator,
   editarPessoa,
   ErroPessoa,
   listarAuditoria,
@@ -281,5 +283,38 @@ describe("limites (só Admin)", () => {
 
   it("lista a equipe", async () => {
     expect((await listarEquipe(db, admin)).map((p) => p.id).sort()).toEqual(["admin", "caixa"]);
+  });
+});
+
+describe("proteção da conta (segundo fator)", () => {
+  async function proteger(id: string) {
+    await db.insert(schema.passkey).values({ id: `pk-${id}`, userId: id, publicKey: "x", credentialID: `c-${id}`, counter: 0, deviceType: "singleDevice", backedUp: false });
+    await db.insert(schema.twoFactor).values({ id: `tf-${id}`, userId: id, secret: "s", backupCodes: "b" });
+    await db.update(schema.user).set({ twoFactorEnabled: true }).where(eq(schema.user.id, id));
+  }
+
+  it("o Admin remove passkeys e autenticador, com registro", async () => {
+    await proteger("ana");
+    await proteger("caixa");
+    expect(await protecaoDaConta(db, caixa, "ana")).toEqual({ passkeys: 1, autenticador: true });
+
+    expect(await removerSegundoFator(db, admin, "ana")).toEqual({ email: "ana@teste.br", removeu: true });
+    expect(await protecaoDaConta(db, caixa, "ana")).toEqual({ passkeys: 0, autenticador: false });
+    expect(await db.select().from(schema.twoFactor).where(eq(schema.twoFactor.userId, "ana"))).toEqual([]);
+    // Só a conta pedida é afetada.
+    expect(await protecaoDaConta(db, admin, "caixa")).toEqual({ passkeys: 1, autenticador: true });
+    expect((await listarAuditoria(db, admin, "ana"))[0]).toMatchObject({
+      acao: "segundo_fator_removido",
+      detalhes: { passkeys: 1, autenticador: true },
+    });
+  });
+
+  it("sem nada para remover não registra; e é só para Admin", async () => {
+    expect(await removerSegundoFator(db, admin, "ana")).toEqual({ email: "ana@teste.br", removeu: false });
+    expect(await listarAuditoria(db, admin, "ana")).toEqual([]);
+    await proteger("ana");
+    await espera("SEM_PERMISSAO", removerSegundoFator(db, caixa, "ana"));
+    await espera("NAO_ENCONTRADA", removerSegundoFator(db, admin, "fantasma"));
+    await espera("SEM_PERMISSAO", protecaoDaConta(db, ana, "ana"));
   });
 });

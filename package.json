@@ -17,6 +17,7 @@
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrar.mjs"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.7.18",
     "better-auth": "^1.7.18",
     "drizzle-orm": "^0.45.4",
     "jsqr": "^1.4.0",
