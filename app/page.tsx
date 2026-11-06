@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="pagina">
@@ -43,12 +45,9 @@ export default function Home() {
       </p>
 
       <div className="chamada">
-        <button type="button" className="botao" disabled aria-describedby="aviso-conta">
-          Clique para acessar sua conta
-        </button>
-        <p className="aviso" id="aviso-conta">
-          Em breve
-        </p>
+        <Link className="botao" href="/app">
+          Acessar sua conta
+        </Link>
       </div>
 
       <footer className="rodape">

@@ -243,3 +243,329 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* ==========================================================================
+   App (/app e /termos). Mesmo vocabulário visual da landing: os verdes e o
+   creme da cédula, botões em pílula, títulos em caixa alta.
+   ========================================================================== */
+
+.app {
+  width: 100%;
+  max-width: calc(440px + var(--gutter) * 2);
+  min-height: 100svh;
+  margin-inline: auto;
+  padding: clamp(28px, 6vh, 56px) var(--gutter) 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-topo {
+  text-align: center;
+}
+
+.app-titulo {
+  margin: 10px 0 0;
+  font-weight: 800;
+  font-size: clamp(1.7rem, 7vw, 2.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.app-subtitulo {
+  margin: 12px auto 0;
+  max-width: 36ch;
+  color: var(--creme-suave);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.selo {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 3px 12px;
+  border: 1px solid var(--ambar);
+  border-radius: 999px;
+  color: var(--ambar);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.cartao {
+  padding: 24px 20px;
+  border: 1px solid rgba(233, 237, 213, 0.16);
+  border-radius: 18px;
+  background: rgba(2, 32, 15, 0.55);
+  box-shadow: 0 22px 44px -24px rgba(0, 0, 0, 0.8);
+}
+
+/* ---------- Saldo ---------- */
+
+.saldo {
+  text-align: center;
+}
+
+.saldo-rotulo {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--creme-suave);
+}
+
+.saldo-valor {
+  margin: 6px 0 0;
+  font-weight: 800;
+  font-size: clamp(2.6rem, 14vw, 3.6rem);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.saldo-valor--negativo {
+  color: var(--ambar);
+}
+
+.saldo-moeda {
+  font-size: 0.45em;
+  font-weight: 600;
+  color: var(--creme-suave);
+  vertical-align: 0.5em;
+}
+
+.saldo-nota {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+  color: var(--creme-suave);
+}
+
+.app-aviso {
+  margin: 0;
+  text-align: center;
+  font-size: 0.92rem;
+  color: var(--creme-suave);
+  text-wrap: pretty;
+}
+
+.app-rodape {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(233, 237, 213, 0.14);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 0.85rem;
+  color: var(--creme-suave);
+}
+
+.app-rodape p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Formulários ---------- */
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.formulario-texto {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--creme-suave);
+  overflow-wrap: anywhere;
+}
+
+.formulario-texto strong {
+  color: var(--creme);
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo > span {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--creme-suave);
+}
+
+.campo input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1.5px solid rgba(233, 237, 213, 0.35);
+  border-radius: 12px;
+  background: rgba(5, 48, 23, 0.6);
+  color: var(--creme);
+  font: inherit;
+  /* 16px ou mais: abaixo disso o iOS dá zoom ao focar o campo. */
+  font-size: 1.05rem;
+}
+
+.campo input::placeholder {
+  color: rgba(201, 214, 180, 0.45);
+}
+
+.campo input:focus-visible {
+  outline: none;
+  border-color: var(--creme);
+  box-shadow: 0 0 0 3px rgba(233, 237, 213, 0.18);
+}
+
+.campo input:disabled {
+  border-style: dashed;
+  color: var(--creme-suave);
+}
+
+.campo .campo-codigo {
+  text-align: center;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  /* Compensa o espaço depois do último dígito para o código ficar centrado. */
+  padding-inline-start: calc(14px + 0.35em);
+  font-variant-numeric: tabular-nums;
+}
+
+.aceite {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.aceite input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: var(--ambar);
+}
+
+.aceite a,
+.texto-legal a {
+  color: var(--creme);
+  text-underline-offset: 3px;
+}
+
+.mensagem {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--creme-suave);
+}
+
+.mensagem:empty {
+  display: none;
+}
+
+.mensagem--erro {
+  color: var(--ambar);
+  font-weight: 600;
+}
+
+.formulario .botao {
+  width: 100%;
+}
+
+a.botao {
+  text-decoration: none;
+}
+
+.botao--contorno {
+  background: transparent;
+  color: var(--creme);
+}
+
+.divisor {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--creme-suave);
+}
+
+.divisor::before,
+.divisor::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(233, 237, 213, 0.18);
+}
+
+.formulario-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.link {
+  appearance: none;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--creme);
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-decoration-color: rgba(233, 237, 213, 0.45);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.link:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---------- Termos ---------- */
+
+.texto-legal {
+  max-width: calc(62ch + var(--gutter) * 2);
+}
+
+.texto-legal h2 {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--creme-suave);
+}
+
+.texto-legal p,
+.texto-legal ul {
+  margin: 0;
+}
+
+.texto-legal ul {
+  padding-inline-start: 20px;
+}
+
+.texto-legal li + li {
+  margin-top: 6px;
+}
