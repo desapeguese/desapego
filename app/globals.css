@@ -1931,3 +1931,14 @@ a.link {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.95rem;
 }
+
+.texto-legal-parte {
+  margin-top: 12px;
+  font-size: 1.5rem;
+}
+
+.texto-legal .tabela td,
+.texto-legal .tabela th {
+  padding-right: 10px;
+  vertical-align: top;
+}

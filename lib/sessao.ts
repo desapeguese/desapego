@@ -5,7 +5,8 @@ import { auth, ehAdminInicial, exigirSegredo, tem2FA } from "./auth";
 import { db, schema } from "./db";
 import type { Papel } from "./db/schema";
 
-export const VERSAO_TERMOS = "2026-11-rascunho";
+/** Data do texto em vigor (app/termos/page.tsx, docs/termos-de-uso.md). */
+export const VERSAO_TERMOS = "2026-11-07";
 
 export type Pessoa = typeof schema.user.$inferSelect;
 

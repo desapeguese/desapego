@@ -152,7 +152,7 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
 | `app/manifest.ts`, `public/sw.js`, `public/sem-conexao.html` | PWA: manifesto, service worker e a tela sem internet. |
 | `public/icone-*-v2.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs` a partir do símbolo do Festival. |
-| `app/termos/` | Termos de uso e privacidade (rascunho, ver abaixo). |
+| `app/termos/` | Termos de uso e privacidade, texto aprovado pela organização em 07/11/2026 (cópia em `docs/termos-de-uso.md`). Ao mudar o texto, mude `VERSAO_TERMOS` em `lib/sessao.ts`. |
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
 | `lib/pessoas.ts` | Gestão de pessoas pelo Caixa e Admin: busca, cadastro, edição, desativação e auditoria, com as permissões por perfil. |
@@ -221,6 +221,6 @@ railway up
 
 ## Not here yet
 
-- **Termos de uso definitivos.** `app/termos/page.tsx` é um rascunho sem
-  revisão jurídica. Ao publicar o texto final, mude `VERSAO_TERMOS` em
-  `lib/sessao.ts`: é ela que fica gravada em cada aceite.
+- **Google:** o botão só aparece com `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+- **Fonte Univers:** o manual da marca a pede; o app usa Barlow enquanto o
+  repositório for público (ver “Identidade visual do app”).
