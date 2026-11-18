@@ -55,6 +55,7 @@ npm run build && npm start   # build de produção (o start aplica as migraçõe
 | `ADMIN_EMAILS` | sim, no início | E-mails, separados por vírgula, que são Admin. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | não | Sem as duas, o botão "Entrar com Google" não aparece. Redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/google`. |
 | `CADASTRO_ABERTO` | não | `0` fecha o cadastro: a landing volta a dizer “em breve” e só `ADMIN_EMAILS` conseguem pedir código; sessões abertas continuam. |
+| `EMAILS_DE_MOVIMENTO` | não | `1` envia e-mail a cada transferência recebida ou debitada. Desligado por padrão (cota do provedor); o aviso na tela não depende disso. |
 | `PGPOOL_MAX` | não | Só com o banco local: `1`. |
 
 ## Identidade visual do app

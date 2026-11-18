@@ -7,7 +7,8 @@ import type { Transacao } from "./ledger";
 
 /**
  * Avisa as pontas de uma transação que não foram quem a fez: na tela, se o app
- * estiver aberto, e por e-mail. Nunca falha a operação: erros só vão para o log.
+ * estiver aberto, e por e-mail (se EMAILS_DE_MOVIMENTO=1). Nunca falha a
+ * operação: erros só vão para o log.
  */
 export function avisarMovimento(t: Transacao, operador: { id: string; nome: string }) {
   const pontas = [t.deConta, t.paraConta].filter((id) => id !== operador.id);
@@ -21,6 +22,11 @@ export function avisarMovimento(t: Transacao, operador: { id: string; nome: stri
       de: operador.nome,
     });
   }
+
+  // O e-mail a cada transferência fica desligado por padrão: o plano gratuito
+  // do provedor de e-mails tem teto diário, e ele precisa sobrar para os
+  // códigos de login. EMAILS_DE_MOVIMENTO=1 religa. O aviso na tela não muda.
+  if (process.env.EMAILS_DE_MOVIMENTO !== "1") return;
 
   void (async () => {
     const destinos = await db
