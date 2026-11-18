@@ -1942,3 +1942,52 @@ a.link {
   padding-right: 10px;
   vertical-align: top;
 }
+
+/* ---------- Ações que pedem cuidado (bloquear, encerrar) ---------- */
+
+.perigo {
+  border: 1.5px dashed var(--tinta);
+  border-radius: 14px;
+  padding: 0 14px;
+}
+
+.perigo summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.perigo[open] {
+  padding-bottom: 14px;
+  background: var(--papel-claro);
+}
+
+.ficha dd .selo {
+  font-size: 0.72rem;
+  padding: 0 8px;
+}
+
+.entrada-lema {
+  font-weight: 600;
+  color: var(--tinta);
+}
+
+.tabela-rolagem {
+  overflow-x: auto;
+}
+
+.texto-legal .tabela {
+  min-width: 560px;
+  font-size: 0.88rem;
+}
+
+.texto-legal section > * + * {
+  margin-top: 10px;
+}
+
+.texto-legal-abertura {
+  margin: 0;
+}

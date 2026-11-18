@@ -51,6 +51,13 @@ As cédulas físicas continuam existindo e convivem com o app. A conversão é f
 
 O livro digital permanece em soma zero; o relatório mostra o total depositado e sacado em papel por período.
 
+> **Atualização de 18/11/2026.** As regras de limite acima mudaram a pedido da
+> organização: cada pessoa passou a ter dois saldos na mesma conta, o pessoal e
+> o de caixa. O balcão usa só o saldo de caixa do operador (até o limite do
+> Caixa); o saldo pessoal não fica negativo, nem por Receber no balcão, e não
+> existe mais limite especial para usuário comum. Só o Admin não tem limite.
+> Ao perder o perfil de Caixa, o saldo de caixa passa ao Admin que o tirou.
+
 ## 3. Perfis e permissões
 
 | Ação | Usuário | Caixa | Admin |

@@ -1,7 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { avisarDadosAlterados, avisarMovimento } from "@/lib/avisos";
+import {
+  avisarCadastroNoBalcao,
+  avisarContaDesativada,
+  avisarDadosAlterados,
+  avisarMovimento,
+} from "@/lib/avisos";
 import { db } from "@/lib/db";
 import { moeda } from "@/lib/formato";
 import { ErroLedger, estornar, transferir } from "@/lib/ledger";
@@ -41,6 +46,7 @@ export async function cadastrar(_anterior: EstadoPessoa, dados: FormData): Promi
   let id: string;
   try {
     ({ id } = await criarPessoa(db, ator, campos));
+    avisarCadastroNoBalcao(campos.email.trim().toLowerCase(), campos.nome.trim());
   } catch (erro) {
     if (!(erro instanceof ErroPessoa)) throw erro;
     return { ...campos, erro: erro.message, existenteId: erro.pessoaId };
@@ -77,7 +83,9 @@ export async function alternarAtivo(dados: FormData): Promise<void> {
 
   let aviso = ativar ? "reativada" : "desativada";
   try {
-    await definirAtivo(db, ator, alvoId, ativar);
+    const motivo = String(dados.get("motivo") ?? "");
+    const { email, mudou } = await definirAtivo(db, ator, alvoId, ativar, motivo);
+    if (mudou && !ativar) avisarContaDesativada(email, motivo.trim());
   } catch (erro) {
     if (!(erro instanceof ErroPessoa)) throw erro;
     aviso = `erro:${erro.codigo}`;
@@ -94,11 +102,7 @@ export async function operar(dados: {
   valor: number;
   descricao: string;
   chave: string;
-  confirmarNegativo: boolean;
-}): Promise<
-  | { ok: true; transacaoId: string }
-  | { ok: false; erro: string; saldoResultante?: number }
-> {
+}): Promise<{ ok: true; transacaoId: string } | { ok: false; erro: string }> {
   const ator = await equipe();
   if (!ator) return { ok: false, erro: SEM_ACESSO };
   if (!TIPOS.includes(dados.tipo)) return { ok: false, erro: "Operação inválida." };
@@ -116,7 +120,6 @@ export async function operar(dados: {
       valor: Number(dados.valor),
       descricao,
       chaveIdempotencia: `${ator.id}:${chave}`,
-      confirmarNegativo: dados.confirmarNegativo === true,
     });
     if (!repetida) avisarMovimento(transacao, { id: ator.id, nome: ator.name });
     return { ok: true, transacaoId: transacao.id };
@@ -125,11 +128,14 @@ export async function operar(dados: {
     if (erro.codigo === "SALDO_INSUFICIENTE") {
       return {
         ok: false,
-        erro: `Seu limite de Caixa não cobre esse valor: você ainda pode distribuir ${moeda(erro.dados.disponivel)}.`,
+        erro: `O limite do seu caixa não cobre esse valor: você ainda pode distribuir ${moeda(erro.dados.disponivel)}.`,
       };
     }
-    if (erro.codigo === "CONFIRMACAO_NECESSARIA") {
-      return { ok: false, erro: "", saldoResultante: erro.dados.saldoResultante };
+    if (erro.codigo === "SALDO_DA_PESSOA_INSUFICIENTE") {
+      return {
+        ok: false,
+        erro: `A pessoa não tem saldo para isso: o máximo é ${moeda(erro.dados.disponivel)}.`,
+      };
     }
     return { ok: false, erro: erro.message };
   }

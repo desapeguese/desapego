@@ -3,8 +3,6 @@ import { dataHora, inteiro, NOME_TIPO } from "@/lib/formato";
 import type { LinhaExtrato } from "@/lib/ledger";
 import { Avatar, AvatarCaixa } from "../pecas";
 
-const COM_O_CAIXA = new Set(["dar", "tomar", "deposito_cedula", "saque_cedula"]);
-
 export function Extrato({
   linhas,
   base = "/app/transacao",
@@ -28,7 +26,8 @@ export function Extrato({
         return (
           <li key={linha.id}>
             <Link className="extrato-linha" href={`${base}/${linha.id}`}>
-              {COM_O_CAIXA.has(linha.tipo) ? <AvatarCaixa /> : <Avatar id={linha.contraparteId} nome={nome} />}
+              {/* A barraca marca quando a outra ponta foi o caixa de alguém. */}
+              {linha.contraparteNoCaixa ? <AvatarCaixa /> : <Avatar id={linha.contraparteId} nome={nome} />}
               <span className="extrato-texto">
                 <span className="extrato-nome">{nome}</span>
                 <span className="extrato-detalhe">

@@ -34,15 +34,16 @@ export default async function PaginaOperacao({
     redirect(ficha);
   }
 
-  const { disponivel } = await obterSaldo(db, ator.id);
+  const { disponivelCaixa } = await obterSaldo(db, ator.id);
 
   return (
     <>
       <Topo titulo={escolhida.titulo} voltar={{ href: ficha, rotulo: "Voltar à pessoa" }} />
       <Operacao
         tipo={escolhida.tipo}
-        alvo={{ id, nome: pessoa.nome || "Sem nome", saldo: pessoa.saldo }}
-        disponivelDoCaixa={disponivel}
+        // Só o Admin não tem piso no saldo pessoal.
+        alvo={{ id, nome: pessoa.nome || "Sem nome", saldo: pessoa.saldo, semLimite: pessoa.papel === "admin" }}
+        disponivelDoCaixa={disponivelCaixa}
       />
     </>
   );

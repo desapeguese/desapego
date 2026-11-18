@@ -6,6 +6,7 @@ import { ehAdminInicial } from "@/lib/cadastro";
 import { db } from "@/lib/db";
 import type { Papel } from "@/lib/db/schema";
 import {
+  anonimizarPessoa,
   definirLimite,
   definirLimitePadraoCaixa,
   definirPapel,
@@ -37,8 +38,9 @@ export async function mudarPapel(dados: FormData): Promise<void> {
     if (alvo && papel !== "admin" && ehAdminInicial(alvo.email)) {
       redirect(ficha(alvoId, "erro:ADMIN_INICIAL"));
     }
-    const { de, para, email } = await definirPapel(db, ator, alvoId, papel);
+    const { de, para, email, caixaFechado } = await definirPapel(db, ator, alvoId, papel);
     if (de !== para) avisarPerfilAlterado(email, de, para, ator.name);
+    if (caixaFechado !== 0) aviso = "papel-caixa";
   } catch (erro) {
     if (!(erro instanceof ErroPessoa)) throw erro;
     aviso = `erro:${erro.codigo}`;
@@ -87,6 +89,24 @@ export async function resetarSegundoFator(dados: FormData): Promise<void> {
   try {
     const { email, removeu } = await removerSegundoFator(db, ator, alvoId);
     if (removeu) avisarSegundoFatorRemovido(email, ator.name);
+  } catch (erro) {
+    if (!(erro instanceof ErroPessoa)) throw erro;
+    aviso = `erro:${erro.codigo}`;
+  }
+  redirect(ficha(alvoId, aviso));
+}
+
+export async function encerrarConta(dados: FormData): Promise<void> {
+  const alvoId = String(dados.get("id") ?? "");
+  const ator = await admin();
+  if (!ator) redirect("/app");
+
+  let aviso = "encerrada";
+  try {
+    if (String(dados.get("confirmacao") ?? "").trim().toUpperCase() !== "ENCERRAR") {
+      throw new ErroPessoa("CONFIRMACAO_INVALIDA", "Confirmação inválida.");
+    }
+    await anonimizarPessoa(db, ator, alvoId);
   } catch (erro) {
     if (!(erro instanceof ErroPessoa)) throw erro;
     aviso = `erro:${erro.codigo}`;

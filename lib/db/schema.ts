@@ -159,8 +159,13 @@ export const conta = pgTable(
     // Sequencial, para o número de série da conta (DES-2026-00412).
     numero: integer("numero").generatedAlwaysAsIdentity().notNull().unique(),
     saldo: integer("saldo").notNull().default(0),
-    // Quanto a conta pode ficar abaixo de zero. Nulo = padrão do papel
-    // (usuário 0, caixa o padrão global, admin sem limite).
+    // O saldo do "modo Caixa": o que a pessoa movimentou operando o balcão.
+    // Fica à parte do pessoal para que ninguém pague o balcão do próprio
+    // bolso nem gaste em proveito próprio o limite do Caixa.
+    saldoCaixa: integer("saldo_caixa").notNull().default(0),
+    // Quanto o saldo de caixa pode ficar abaixo de zero. Nulo = o padrão
+    // global do perfil Caixa. O saldo pessoal nunca fica negativo por
+    // iniciativa própria (só o Admin não tem limite).
     limiteNegativo: integer("limite_negativo"),
     atualizadaEm: instante("atualizada_em").notNull().defaultNow(),
   },
@@ -179,6 +184,9 @@ export const TIPOS_TRANSACAO = [
   "deposito_cedula",
   "saque_cedula",
   "estorno",
+  // Zera o saldo de caixa de quem deixou de ser Caixa, passando-o ao Admin
+  // que tirou o perfil.
+  "fechamento_caixa",
 ] as const;
 export type TipoTransacao = (typeof TIPOS_TRANSACAO)[number];
 
@@ -195,6 +203,9 @@ export const transacao = pgTable(
     paraConta: text("para_conta")
       .notNull()
       .references(() => conta.usuarioId, { onDelete: "restrict" }),
+    // De qual saldo saiu e em qual entrou: o pessoal (false) ou o de caixa.
+    deCaixa: boolean("de_caixa").notNull().default(false),
+    paraCaixa: boolean("para_caixa").notNull().default(false),
     valor: integer("valor").notNull(),
     descricao: text("descricao").notNull().default(""),
     // Quem apertou o botão. Em envio/dar/tomar é sempre uma das duas pontas.
@@ -212,7 +223,7 @@ export const transacao = pgTable(
     check("transacao_contas_distintas", sql`${t.deConta} <> ${t.paraConta}`),
     check(
       "transacao_tipo_valido",
-      sql`${t.tipo} in ('envio', 'dar', 'tomar', 'deposito_cedula', 'saque_cedula', 'estorno')`,
+      sql`${t.tipo} in ('envio', 'dar', 'tomar', 'deposito_cedula', 'saque_cedula', 'estorno', 'fechamento_caixa')`,
     ),
     index("transacao_de_idx").on(t.deConta, t.criadaEm),
     index("transacao_para_idx").on(t.paraConta, t.criadaEm),
@@ -256,4 +267,22 @@ export const edicao = pgTable(
     criadaEm: instante("criada_em").notNull().defaultNow(),
   },
   (t) => [check("edicao_datas_em_ordem", sql`${t.inicio} <= ${t.fim}`)],
+);
+
+/**
+ * Registros de acesso (Marco Civil da Internet, art. 15): quem entrou, de qual
+ * endereço e quando. Guardados por seis meses e depois apagados.
+ */
+export const acesso = pgTable(
+  "acesso",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    criadoEm: instante("criado_em").notNull().defaultNow(),
+    usuarioId: text("usuario_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    ip: text("ip"),
+    agente: text("agente"),
+  },
+  (t) => [index("acesso_usuario_idx").on(t.usuarioId, t.criadoEm), index("acesso_data_idx").on(t.criadoEm)],
 );

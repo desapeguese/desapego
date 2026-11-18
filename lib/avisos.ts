@@ -85,3 +85,34 @@ export function avisarSegundoFatorRemovido(email: string, operadorNome: string) 
       "Se você não pediu isso, procure a organização do Festival o quanto antes.",
   }).catch((erro) => console.error("[aviso de segundo fator removido] e-mail não enviado:", erro));
 }
+
+const base = () => (process.env.BETTER_AUTH_URL ?? "").replace(/\/$/, "");
+
+/** Para quem foi cadastrado no balcão: avisa que a carteira existe e como entrar. */
+export function avisarCadastroNoBalcao(email: string, nome: string) {
+  enviarEmail({
+    para: email,
+    assunto: "Sua carteira da Moeda Desapego foi criada",
+    texto:
+      `Olá, ${nome.split(" ")[0]}!\n\n` +
+      "A equipe do Festival Desapegue-se criou, a seu pedido, uma carteira da Moeda Social Desapego com este e-mail. " +
+      "Você já pode receber Desapegos.\n\n" +
+      `Para usar a carteira, entre em ${base()}/app com este e-mail: enviamos um código, sem senha. ` +
+      "No primeiro acesso você lê e aceita os Termos de Uso e a Política de Privacidade:\n" +
+      `${base()}/termos\n\n` +
+      "Se você não pediu este cadastro, responda a este e-mail ou escreva para contato@festivaldesapeguese.com.br.",
+  }).catch((erro) => console.error("[aviso de cadastro no balcão] e-mail não enviado:", erro));
+}
+
+/** Avisa a pessoa de que a conta foi bloqueada, com o motivo e como contestar. */
+export function avisarContaDesativada(email: string, motivo: string) {
+  enviarEmail({
+    para: email,
+    assunto: "Sua carteira da Moeda Desapego foi bloqueada",
+    texto:
+      "A organização do Festival Desapegue-se bloqueou a sua carteira da Moeda Social Desapego.\n\n" +
+      `Motivo: ${motivo}\n\n` +
+      "Enquanto estiver bloqueada, a conta não entra nem faz transações. O saldo e o histórico estão preservados.\n\n" +
+      "Se você discorda, pode contestar ou pedir a revisão pelo e-mail contato@festivaldesapeguese.com.br.",
+  }).catch((erro) => console.error("[aviso de conta desativada] e-mail não enviado:", erro));
+}

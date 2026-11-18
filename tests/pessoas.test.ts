@@ -5,8 +5,17 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Banco } from "../lib/db";
 import * as schema from "../lib/db/schema";
-import { buscarTransacoesPorNumero, obterTransacaoCompleta, podeEstornar, estornar, transferir } from "../lib/ledger";
 import {
+  buscarTransacoesPorNumero,
+  estornar,
+  listarExtrato,
+  obterTransacaoCompleta,
+  podeEstornar,
+  transferir,
+  verificarIntegridade,
+} from "../lib/ledger";
+import {
+  anonimizarPessoa,
   buscarPessoas,
   criarPessoa,
   definirAtivo,
@@ -148,7 +157,7 @@ describe("desativar e reativar", () => {
     await transferir(db, { operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 40, descricao: "x", chaveIdempotencia: "k1" });
     await db.insert(schema.session).values({ id: "s1", token: "t1", userId: "ana", expiresAt: new Date(Date.now() + 1e6) });
 
-    await definirAtivo(db, caixa, "ana", false);
+    await definirAtivo(db, caixa, "ana", false, "uso indevido");
     expect(await obterPessoa(db, caixa, "ana")).toMatchObject({ ativo: false, saldo: 40 });
     expect(await db.select().from(schema.session)).toEqual([]);
     await expect(
@@ -162,18 +171,19 @@ describe("desativar e reativar", () => {
 
   it("ninguém desativa a si mesmo, e o Caixa não desativa a equipe", async () => {
     await pessoa("caixa2", "caixa");
-    await espera("PROPRIA_CONTA", definirAtivo(db, caixa, "caixa", false));
-    await espera("SEM_PERMISSAO", definirAtivo(db, caixa, "caixa2", false));
-    await espera("SEM_PERMISSAO", definirAtivo(db, caixa, "admin", false));
-    await definirAtivo(db, admin, "caixa2", false);
+    await espera("PROPRIA_CONTA", definirAtivo(db, caixa, "caixa", false, "teste"));
+    await espera("MOTIVO_OBRIGATORIO", definirAtivo(db, caixa, "ana", false));
+    await espera("SEM_PERMISSAO", definirAtivo(db, caixa, "caixa2", false, "teste"));
+    await espera("SEM_PERMISSAO", definirAtivo(db, caixa, "admin", false, "teste"));
+    await definirAtivo(db, admin, "caixa2", false, "teste");
   });
 
   it("o último Admin ativo não pode ser desativado", async () => {
     await pessoa("admin2", "admin");
     // Com dois ativos, um pode sair.
-    await definirAtivo(db, { id: "admin2", papel: "admin" }, "admin", false);
+    await definirAtivo(db, { id: "admin2", papel: "admin" }, "admin", false, "teste");
     // Agora admin2 é o único ativo.
-    await espera("ULTIMO_ADMIN", definirAtivo(db, admin, "admin2", false));
+    await espera("ULTIMO_ADMIN", definirAtivo(db, admin, "admin2", false, "teste"));
     expect((await obterPessoa(db, admin, "admin2"))!.ativo).toBe(true);
   });
 });
@@ -215,14 +225,36 @@ describe("perfis (só Admin)", () => {
     ]);
   });
 
-  it("quem vira Caixa passa a ter o limite do perfil; rebaixado negativo não envia", async () => {
+  it("tirar o perfil de Caixa fecha o caixa: o Admin assume o saldo de caixa e o pessoal fica como estava", async () => {
+    // Ana tem 50 pessoais, vira Caixa e distribui 300 no balcão.
+    await transferir(db, { operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 50, descricao: "x", chaveIdempotencia: "k0" });
     await definirPapel(db, admin, "ana", "caixa");
+    await definirLimite(db, admin, "ana", 500);
     await transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "dar", valor: 300, descricao: "x", chaveIdempotencia: "k1" });
-    await definirPapel(db, admin, "ana", "usuario");
-    expect((await obterPessoa(db, admin, "ana"))!.saldo).toBe(-300);
+    expect(await obterPessoa(db, admin, "ana")).toMatchObject({ saldo: 50, saldoCaixa: -300, limiteNegativo: 500 });
+
+    expect(await definirPapel(db, admin, "ana", "usuario")).toMatchObject({ de: "caixa", para: "usuario", caixaFechado: -300 });
+    expect(await obterPessoa(db, admin, "ana")).toMatchObject({ papel: "usuario", saldo: 50, saldoCaixa: 0, limiteNegativo: null });
+    expect((await obterPessoa(db, admin, "admin"))!.saldoCaixa).toBe(-300);
+    expect((await listarAuditoria(db, admin, "ana"))[0]).toMatchObject({
+      acao: "papel_alterado",
+      detalhes: { de: "caixa", para: "usuario", caixaFechado: -300 },
+    });
+    // O histórico dela no modo Caixa continua consultável depois de sair.
+    const doCaixa = await listarExtrato(db, "ana", { lado: "caixa" });
+    expect(doCaixa.linhas.map((l) => [l.tipo, l.valor])).toEqual([["fechamento_caixa", 300], ["dar", -300]]);
+    // De volta a usuária comum: envia os 50 dela e nada além.
+    await transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 50, chaveIdempotencia: "k2" });
     await expect(
-      transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 1, chaveIdempotencia: "k2" }),
+      transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 1, chaveIdempotencia: "k3" }),
     ).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
+    expect((await verificarIntegridade(db)).integro).toBe(true);
+  });
+
+  it("trocar entre Caixa e Admin não fecha o caixa", async () => {
+    await transferir(db, { operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 70, descricao: "x", chaveIdempotencia: "k1" });
+    expect(await definirPapel(db, admin, "caixa", "admin")).toMatchObject({ caixaFechado: 0 });
+    expect((await obterPessoa(db, admin, "caixa"))!.saldoCaixa).toBe(-70);
   });
 
   it("recusa Caixa, o próprio perfil, perfil inválido e o último Admin", async () => {
@@ -253,20 +285,18 @@ describe("limites (só Admin)", () => {
     expect(registro).toMatchObject({ acao: "limite_padrao_caixa", detalhes: { de: 50, para: 60 }, alvoId: null, atorNome: "admin da Silva" });
   });
 
-  it("limite individual vale para Caixa e para usuário, e volta ao padrão com null", async () => {
+  it("limite individual é só do perfil Caixa, e volta ao padrão com null", async () => {
     await definirLimite(db, admin, "caixa", 2000);
     await dar("caixa", 2000, "k1");
-    await definirLimite(db, admin, "ana", 30);
-    expect((await obterPessoa(db, admin, "ana"))!.limiteNegativo).toBe(30);
-    await transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 2030, chaveIdempotencia: "k2" });
-    await definirLimite(db, admin, "ana", null);
-    await expect(
-      transferir(db, { operadorId: "ana", contraparteId: "caixa", tipo: "envio", valor: 1, chaveIdempotencia: "k3" }),
-    ).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
-    expect((await listarAuditoria(db, admin, "ana")).map((l) => l.detalhes)).toEqual([
-      { de: 30, para: null },
-      { de: null, para: 30 },
+    expect((await obterPessoa(db, admin, "caixa"))!.limiteNegativo).toBe(2000);
+    await definirLimite(db, admin, "caixa", null);
+    await expect(dar("caixa", 1, "k2")).rejects.toMatchObject({ codigo: "SALDO_INSUFICIENTE" });
+    expect((await listarAuditoria(db, admin, "caixa")).map((l) => l.detalhes)).toEqual([
+      { de: 2000, para: null },
+      { de: null, para: 2000 },
     ]);
+    // Usuário comum não recebe crédito.
+    await espera("LIMITE_INVALIDO", definirLimite(db, admin, "ana", 30));
   });
 
   it("recusa valores inválidos, Admin como alvo e quem não é Admin", async () => {
@@ -316,5 +346,48 @@ describe("proteção da conta (segundo fator)", () => {
     await espera("SEM_PERMISSAO", removerSegundoFator(db, caixa, "ana"));
     await espera("NAO_ENCONTRADA", removerSegundoFator(db, admin, "fantasma"));
     await espera("SEM_PERMISSAO", protecaoDaConta(db, ana, "ana"));
+  });
+});
+
+describe("encerramento de conta (anonimização)", () => {
+  it("apaga os dados pessoais e as credenciais, e mantém as transações sem identificar a pessoa", async () => {
+    await transferir(db, { operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 20, descricao: "livro", chaveIdempotencia: "k1" });
+    await editarPessoa(db, caixa, "ana", { nome: "Ana Maria da Silva", email: "ana@teste.br", telefone: "11912345678" });
+    await db.insert(schema.session).values({ id: "s1", token: "t1", userId: "ana", expiresAt: new Date(Date.now() + 1e6) });
+    await db.insert(schema.account).values({ id: "a1", accountId: "google-ana", providerId: "google", userId: "ana" });
+    await db.insert(schema.passkey).values({ id: "pk", userId: "ana", publicKey: "x", credentialID: "c", counter: 0, deviceType: "singleDevice", backedUp: false });
+    await db.insert(schema.verification).values({ id: "v1", identifier: "sign-in-otp-ana@teste.br", value: "x", expiresAt: new Date(Date.now() + 1e6) });
+    await db.insert(schema.verification).values({ id: "v2", identifier: "sign-in-otp-caixa@teste.br", value: "x", expiresAt: new Date(Date.now() + 1e6) });
+
+    // Com saldo, não encerra.
+    await espera("SALDO_PENDENTE", anonimizarPessoa(db, admin, "ana"));
+    await transferir(db, { operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 20, descricao: "acerto", chaveIdempotencia: "k2" });
+
+    expect(await anonimizarPessoa(db, admin, "ana")).toEqual({ emailAntigo: "ana@teste.br" });
+    const [bruta] = await db.select().from(schema.user).where(eq(schema.user.id, "ana"));
+    expect(bruta).toMatchObject({ name: "Conta encerrada", telefone: null, ativo: false, emailVerified: false });
+    expect(bruta.email).toMatch(/^encerrada-[0-9a-f]{18}@anonimo\.invalid$/);
+    expect(await db.select().from(schema.session)).toEqual([]);
+    expect(await db.select().from(schema.account)).toEqual([]);
+    expect(await db.select().from(schema.passkey)).toEqual([]);
+    expect((await db.select().from(schema.verification)).map((v) => v.id)).toEqual(["v2"]);
+
+    // Nada no registro da conta guarda o nome ou o e-mail antigos.
+    const registro = await listarAuditoria(db, admin, "ana");
+    expect(JSON.stringify(registro)).not.toMatch(/ana@teste|Ana Maria|91234/);
+    expect(registro[0].acao).toBe("conta_encerrada");
+    // O livro continua fechando, e o extrato do Caixa mostra só o marcador.
+    expect((await verificarIntegridade(db)).integro).toBe(true);
+    const doCaixa = await listarExtrato(db, "caixa", { lado: "caixa" });
+    expect(doCaixa.linhas.map((l) => l.contraparteNome)).toEqual(["Conta encerrada", "Conta encerrada"]);
+    // O e-mail fica livre para um cadastro novo.
+    await criarPessoa(db, caixa, { nome: "Ana Nova Conta", email: "ana@teste.br", telefone: "" });
+  });
+
+  it("é só para Admin, nunca na própria conta nem em quem ainda é da equipe", async () => {
+    await espera("SEM_PERMISSAO", anonimizarPessoa(db, caixa, "ana"));
+    await espera("PROPRIA_CONTA", anonimizarPessoa(db, admin, "admin"));
+    await espera("SEM_PERMISSAO", anonimizarPessoa(db, admin, "caixa"));
+    await espera("NAO_ENCONTRADA", anonimizarPessoa(db, admin, "fantasma"));
   });
 });

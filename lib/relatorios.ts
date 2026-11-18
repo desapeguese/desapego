@@ -20,6 +20,8 @@ export type Filtros = {
   operadorId?: string;
   /** Quem aparece numa das duas pontas. */
   usuarioId?: string;
+  /** Só o que esta pessoa movimentou no modo Caixa (o saldo de caixa dela). */
+  caixaId?: string;
 };
 
 const ehData = (v?: string): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
@@ -32,6 +34,7 @@ export function limparFiltros(bruto: Record<string, string | undefined>): Filtro
   if (TIPOS_TRANSACAO.includes(bruto.tipo as TipoTransacao)) filtros.tipo = bruto.tipo as TipoTransacao;
   if (bruto.operadorId) filtros.operadorId = bruto.operadorId;
   if (bruto.usuarioId) filtros.usuarioId = bruto.usuarioId;
+  if (bruto.caixaId) filtros.caixaId = bruto.caixaId;
   return filtros;
 }
 
@@ -42,6 +45,9 @@ function condicao(f: Filtros): SQL {
   if (f.tipo) partes.push(sql`t.tipo = ${f.tipo}`);
   if (f.operadorId) partes.push(sql`t.operador_id = ${f.operadorId}`);
   if (f.usuarioId) partes.push(sql`(t.de_conta = ${f.usuarioId} or t.para_conta = ${f.usuarioId})`);
+  if (f.caixaId) {
+    partes.push(sql`((t.de_conta = ${f.caixaId} and t.de_caixa) or (t.para_conta = ${f.caixaId} and t.para_caixa))`);
+  }
   return sql.join(partes, sql` and `);
 }
 
@@ -99,40 +105,42 @@ export async function retratoAtual(db: Banco) {
     ativas: number;
     positivo: number;
     negativo: number;
-    organizacao: number;
+    caixas: number;
   }>(
     await db.execute(sql`
       select count(*)::int as pessoas,
              count(*) filter (where u.ativo)::int as ativas,
              coalesce(sum(c.saldo) filter (where c.saldo > 0), 0)::int as positivo,
              coalesce(sum(c.saldo) filter (where c.saldo < 0), 0)::int as negativo,
-             coalesce(sum(c.saldo) filter (where c.saldo < 0 and u.papel <> 'usuario'), 0)::int as organizacao
+             coalesce(sum(c.saldo_caixa), 0)::int as caixas
       from ${user} u left join ${conta} c on c.usuario_id = u.id
     `),
   );
-  const destaque = async (ordem: SQL, filtro: SQL) =>
+  const destaque = async (coluna: SQL, ordem: SQL, filtro: SQL) =>
     linhas<SaldoDestaque>(
       await db.execute(sql`
-        select u.id, u.name as nome, u.papel, c.saldo
+        select u.id, u.name as nome, u.papel, ${coluna} as saldo
         from ${conta} c join ${user} u on u.id = c.usuario_id
         where ${filtro} order by ${ordem}, u.name limit 10
       `),
     );
-  const [maioresPositivos, maioresNegativos, integridade] = [
-    await destaque(sql`c.saldo desc`, sql`c.saldo > 0`),
-    await destaque(sql`c.saldo asc`, sql`c.saldo < 0`),
-    await verificarIntegridade(db),
-  ];
+  const maioresPositivos = await destaque(sql`c.saldo`, sql`c.saldo desc`, sql`c.saldo > 0`);
+  const maioresNegativos = await destaque(sql`c.saldo`, sql`c.saldo asc`, sql`c.saldo < 0`);
+  const caixas = await destaque(sql`c.saldo_caixa`, sql`c.saldo_caixa asc`, sql`c.saldo_caixa <> 0`);
+  const integridade = await verificarIntegridade(db);
   return {
     pessoas: totais.pessoas,
     pessoasAtivas: totais.ativas,
-    /** Moeda em circulação: quanto as pessoas têm a receber em objetos. */
+    /** Moeda em circulação: quanto as pessoas têm a trocar por objetos. */
     somaPositivos: totais.positivo,
+    /** Saldos pessoais negativos (Admins e casos de estorno). */
     somaNegativos: totais.negativo,
-    /** Saldo negativo de Caixas e Admins: a emissão feita pela organização. */
-    negativoDaOrganizacao: totais.organizacao,
+    /** Soma dos saldos de caixa: o que o balcão emitiu, líquido do que recolheu. */
+    saldoDosCaixas: totais.caixas,
     maioresPositivos,
     maioresNegativos,
+    /** Saldo de caixa de cada pessoa que tem um, do mais negativo ao mais positivo. */
+    caixas,
     integridade,
   };
 }
@@ -145,6 +153,9 @@ export type LinhaRelatorio = {
   descricao: string;
   estornoDe: string | null;
   deId: string;
+  /** Saiu do saldo de caixa (true) ou do pessoal de quem está em `de`. */
+  deCaixa: boolean;
+  paraCaixa: boolean;
   deNome: string;
   deEmail: string;
   paraId: string;
@@ -173,6 +184,7 @@ export async function listarTransacoes(
   const brutas = linhas<Record<string, never>>(
     await db.execute(sql`
       select t.id, t.criada_em, t.criada_em::text as cursor_instante, t.tipo, t.valor, t.descricao, t.estorno_de,
+             t.de_caixa, t.para_caixa,
              t.de_conta, de.name as de_nome, de.email as de_email,
              t.para_conta, para.name as para_nome, para.email as para_email,
              op.name as operador_nome, op.email as operador_email
@@ -196,6 +208,8 @@ export async function listarTransacoes(
       descricao: b.descricao,
       estornoDe: b.estorno_de,
       deId: b.de_conta,
+      deCaixa: b.de_caixa,
+      paraCaixa: b.para_caixa,
       deNome: b.de_nome,
       deEmail: b.de_email,
       paraId: b.para_conta,

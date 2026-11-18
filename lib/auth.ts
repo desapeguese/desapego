@@ -5,13 +5,15 @@ import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/a
 import { nextCookies } from "better-auth/next-js";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
-import { count, eq } from "drizzle-orm";
+import { count, eq, lt } from "drizzle-orm";
 import { cadastroAberto, ehAdminInicial } from "./cadastro";
 import { db, schema } from "./db";
 import { enviarEmail } from "./email";
 import { permitir } from "./limite";
 
 const DIA = 60 * 60 * 24;
+/** Seis meses, com uma semana de folga para nunca apagar antes do prazo legal. */
+const RETENCAO_DE_ACESSOS_MS = (184 + 7) * DIA * 1000;
 const MINUTOS_CODIGO = 10;
 
 export type FalhaCodigo = "MUITOS_CODIGOS" | "FALHA_ENVIO" | "CADASTRO_FECHADO";
@@ -173,6 +175,23 @@ export const auth = betterAuth({
     },
     session: {
       create: {
+        // Registro de acesso (Marco Civil, art. 15): cada login fica guardado
+        // com endereço IP, data e hora por seis meses. A limpeza do que
+        // venceu pega carona em um a cada tantos logins.
+        after: async (sessao) => {
+          try {
+            await db.insert(schema.acesso).values({
+              usuarioId: sessao.userId,
+              ip: sessao.ipAddress ?? null,
+              agente: sessao.userAgent?.slice(0, 300) ?? null,
+            });
+            if (Math.random() < 0.02) {
+              await db.delete(schema.acesso).where(lt(schema.acesso.criadoEm, new Date(Date.now() - RETENCAO_DE_ACESSOS_MS)));
+            }
+          } catch (erro) {
+            console.error("[registro de acesso] não gravado:", erro);
+          }
+        },
         before: async (sessao) => {
           const [pessoa] = await db
             .select({ ativo: schema.user.ativo })

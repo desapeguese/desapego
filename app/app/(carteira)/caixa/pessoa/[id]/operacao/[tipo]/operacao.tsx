@@ -25,8 +25,8 @@ const novaChave = () =>
 
 export function Operacao(props: {
   tipo: TipoOperacao;
-  alvo: { id: string; nome: string; saldo: number };
-  /** Quanto o Caixa ainda pode distribuir. `null` = sem limite (Admin). */
+  alvo: { id: string; nome: string; saldo: number; semLimite: boolean };
+  /** Quanto o saldo de caixa ainda pode distribuir. `null` = sem limite (Admin). */
   disponivelDoCaixa: number | null;
 }) {
   const router = useRouter();
@@ -35,11 +35,7 @@ export function Operacao(props: {
 
   const [valorTexto, setValorTexto] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [cienteNegativo, setCienteNegativo] = useState(false);
   const [cienteValorAlto, setCienteValorAlto] = useState(false);
-  // O servidor é quem sabe o limite da pessoa; se ele pedir confirmação que a
-  // tela não previu, o saldo resultante que ele informou fica aqui.
-  const [negativoDoServidor, setNegativoDoServidor] = useState<number | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const pedido = useRef({ assinatura: "", chave: "" });
@@ -47,23 +43,21 @@ export function Operacao(props: {
   const valor = Number(valorTexto);
   const valorValido = Number.isInteger(valor) && valor >= 1;
   const alemDoLimite = !tira && props.disponivelDoCaixa !== null && valor > props.disponivelDoCaixa;
-  const saldoResultante = negativoDoServidor ?? props.alvo.saldo - valor;
-  const deixaNegativo = tira && valorValido && (negativoDoServidor !== null || saldoResultante < 0);
+  // No balcão ninguém fica negativo: a pessoa paga no máximo o que tem.
+  const semSaldo = tira && valorValido && !props.alvo.semLimite && valor > props.alvo.saldo;
   const valorAlto = valor > VALOR_ALTO;
   const faltaDescricao = textos.descricao !== null && !descricao.trim();
   const podeEnviar =
     valorValido &&
     !alemDoLimite &&
+    !semSaldo &&
     !faltaDescricao &&
-    (!deixaNegativo || cienteNegativo) &&
     (!valorAlto || cienteValorAlto) &&
     !ocupado;
 
   function mudarValor(texto: string) {
     setValorTexto(texto.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9));
-    setCienteNegativo(false);
     setCienteValorAlto(false);
-    setNegativoDoServidor(null);
     setErro("");
   }
 
@@ -84,7 +78,6 @@ export function Operacao(props: {
         valor,
         descricao,
         chave: pedido.current.chave,
-        confirmarNegativo: cienteNegativo,
       });
     } catch {
       setOcupado(false);
@@ -92,11 +85,6 @@ export function Operacao(props: {
     }
     if (!resposta.ok) {
       setOcupado(false);
-      if (resposta.saldoResultante !== undefined) {
-        setNegativoDoServidor(resposta.saldoResultante);
-        setCienteNegativo(false);
-        return;
-      }
       return setErro(resposta.erro);
     }
     router.replace(`/app/caixa/pessoa/${props.alvo.id}?feito=${resposta.transacaoId}`);
@@ -135,10 +123,10 @@ export function Operacao(props: {
           </div>
           <p className="nota-pe">
             {tira
-              ? "entra no seu saldo de Caixa"
+              ? "entra no saldo do seu caixa"
               : props.disponivelDoCaixa === null
-                ? "sai do seu saldo, sem limite"
-                : `sai do seu saldo · você pode distribuir ${moeda(props.disponivelDoCaixa)}`}
+                ? "sai do saldo do seu caixa, sem limite"
+                : `sai do saldo do seu caixa · você pode distribuir ${moeda(props.disponivelDoCaixa)}`}
           </p>
         </div>
       </div>
@@ -162,18 +150,12 @@ export function Operacao(props: {
       <div className="rodape-acao">
         <p className="mensagem mensagem--erro" role="alert">
           {alemDoLimite && props.disponivelDoCaixa !== null
-            ? `Seu limite de Caixa não cobre esse valor: você ainda pode distribuir ${moeda(props.disponivelDoCaixa)}.`
-            : erro}
+            ? `O limite do seu caixa não cobre esse valor: você ainda pode distribuir ${moeda(props.disponivelDoCaixa)}.`
+            : semSaldo
+              ? `${props.alvo.nome} tem ${moeda(props.alvo.saldo)}: não dá para ${props.tipo === "tomar" ? "receber" : "sacar"} mais do que isso.`
+              : erro}
         </p>
-        {deixaNegativo && (
-          <label className="aceite aceite--alerta">
-            <input type="checkbox" checked={cienteNegativo} onChange={(e) => setCienteNegativo(e.target.checked)} />
-            <span>
-              Isso deixa {props.alvo.nome} com saldo <strong>{moeda(saldoResultante)}</strong>. Combinei com a pessoa.
-            </span>
-          </label>
-        )}
-        {valorAlto && !alemDoLimite && (
+        {valorAlto && !alemDoLimite && !semSaldo && (
           <label className="aceite">
             <input type="checkbox" checked={cienteValorAlto} onChange={(e) => setCienteValorAlto(e.target.checked)} />
             <span>É um valor alto. Conferi o valor e a pessoa.</span>

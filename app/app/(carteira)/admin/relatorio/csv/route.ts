@@ -39,7 +39,7 @@ export async function GET(pedido: Request) {
           codificador.encode(
             linhaCsv([
               "Número", "Data", "Hora", "Tipo", "Valor (D$)",
-              "Saiu de", "E-mail (saiu de)", "Entrou em", "E-mail (entrou em)",
+              "Saiu de", "E-mail (saiu de)", "Saldo de origem", "Entrou em", "E-mail (entrou em)", "Saldo de destino",
               "Feita por", "E-mail (feita por)", "Descrição", "Estorno de", "Edição", "Identificador",
             ]),
           ),
@@ -52,7 +52,7 @@ export async function GET(pedido: Request) {
           for (const t of pagina.linhas) {
             lote += linhaCsv([
               numeroCurto(t.id), data.format(t.criadaEm), hora.format(t.criadaEm), NOME_TIPO[t.tipo], t.valor,
-              t.deNome, t.deEmail, t.paraNome, t.paraEmail,
+              t.deNome, t.deEmail, t.deCaixa ? "caixa" : "pessoal", t.paraNome, t.paraEmail, t.paraCaixa ? "caixa" : "pessoal",
               t.operadorNome, t.operadorEmail, t.descricao,
               t.estornoDe ? numeroCurto(t.estornoDe) : null, edicaoDe(t.criadaEm), t.id,
             ]);

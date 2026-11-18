@@ -54,11 +54,17 @@ export default async function TransacaoDoCaixa({
         <dl className="ficha">
           <div>
             <dt>saiu de</dt>
-            <dd>{pessoa(t.deConta, t.deNome)}</dd>
+            <dd>
+              {pessoa(t.deConta, t.deNome)}
+              {t.deCaixa && <span className="selo selo--neutro">caixa</span>}
+            </dd>
           </div>
           <div>
             <dt>entrou em</dt>
-            <dd>{pessoa(t.paraConta, t.paraNome)}</dd>
+            <dd>
+              {pessoa(t.paraConta, t.paraNome)}
+              {t.paraCaixa && <span className="selo selo--neutro">caixa</span>}
+            </dd>
           </div>
           <div>
             <dt>feita por</dt>
@@ -101,7 +107,9 @@ export default async function TransacaoDoCaixa({
             ? "Um estorno não pode ser estornado."
             : t.estornadaPor
               ? "Esta transação já foi estornada."
-              : "Só quem fez esta operação, ou um Admin, pode estorná-la."}
+              : t.tipo === "fechamento_caixa"
+                ? "Um fechamento de caixa não pode ser estornado."
+                : "Só quem fez esta operação, ou um Admin, pode estorná-la."}
         </p>
       )}
     </>

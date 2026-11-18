@@ -23,6 +23,7 @@ export const NOME_TIPO: Record<TipoTransacao, string> = {
   deposito_cedula: "Depósito de cédulas",
   saque_cedula: "Saque em cédulas",
   estorno: "Estorno",
+  fechamento_caixa: "Fechamento de caixa",
 };
 
 /** "DES-2026-00412": o número de série da conta, no formato da cédula. */

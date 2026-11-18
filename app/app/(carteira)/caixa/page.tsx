@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { dataHora, moeda, NOME_TIPO, numeroCurto } from "@/lib/formato";
-import { buscarTransacoesPorNumero, obterSaldo } from "@/lib/ledger";
+import { dataHora, inteiro, moeda, NOME_TIPO, numeroCurto } from "@/lib/formato";
+import { buscarTransacoesPorNumero, listarExtrato, obterSaldo } from "@/lib/ledger";
 import { buscarPessoas } from "@/lib/pessoas";
+import { Nota, tamanhoDoNumero } from "../../pecas";
+import { Extrato } from "../extrato";
 import { Topo } from "../topo";
 import { exigirEquipe } from "./equipe";
 import { ListaPessoas } from "./lista-pessoas";
@@ -23,19 +25,33 @@ export default async function Caixa({
   const transacoes = numero ? await buscarTransacoesPorNumero(db, numero) : [];
   if (transacoes.length === 1) redirect(`/app/caixa/transacao/${transacoes[0].id}`);
 
-  const [pessoas, { saldo, disponivel }] = await Promise.all([
+  const [pessoas, { saldoCaixa, disponivelCaixa }, movimentos] = await Promise.all([
     buscarPessoas(db, ator, termo),
     obterSaldo(db, ator.id),
+    listarExtrato(db, ator.id, { lado: "caixa", limite: 5 }),
   ]);
+  const saldoTexto = `${saldoCaixa < 0 ? "−" : ""}${inteiro(Math.abs(saldoCaixa))}`;
 
   return (
     <>
-      <Topo titulo="Caixa">
-        <p className="app-subtitulo">
-          Seu saldo: <strong>{moeda(saldo)}</strong>
-          {disponivel === null ? " · sem limite" : ` · pode distribuir ${moeda(disponivel)}`}
-        </p>
-      </Topo>
+      <Topo titulo="Modo Caixa" voltar={{ href: "/app", rotulo: "Sair do modo Caixa" }} />
+
+      <Nota
+        rotuloDaSecao="Saldo do caixa"
+        rotulo={<p className="rotulo">saldo do seu caixa</p>}
+        valor={
+          <p className="nota-valor">
+            <span className="nota-moeda">D$</span>
+            <span className={tamanhoDoNumero(saldoTexto, "nota-numero")}>{saldoTexto}</span>
+          </p>
+        }
+        pe={
+          <p className="nota-pe">
+            {disponivelCaixa === null ? "sem limite" : `você ainda pode distribuir ${moeda(disponivelCaixa)}`}
+            <small>À parte do seu saldo pessoal, que você vê ao sair do modo Caixa.</small>
+          </p>
+        }
+      />
 
       <nav className="acoes" aria-label="Atalhos do Caixa">
         <Link className="botao" href="/app/caixa/ler">Ler QR</Link>
@@ -66,6 +82,18 @@ export default async function Caixa({
             {!termo && <p className="rotulo lista-rotulo">cadastros mais recentes</p>}
             <ListaPessoas pessoas={pessoas} />
           </>
+        )}
+      </section>
+
+      <section aria-labelledby="titulo-movimentos">
+        <div className="secao-cabeca">
+          <h2 className="secao-titulo" id="titulo-movimentos">Seu caixa</h2>
+          {movimentos.proximo && <Link href="/app/caixa/movimentos">ver tudo</Link>}
+        </div>
+        {movimentos.linhas.length === 0 ? (
+          <p className="vazio">Você ainda não fez operações no modo Caixa.</p>
+        ) : (
+          <Extrato linhas={movimentos.linhas} base="/app/caixa/transacao" />
         )}
       </section>
 
@@ -100,6 +128,10 @@ export default async function Caixa({
           </ul>
         )}
       </section>
+
+      <div className="rodape-acao">
+        <Link className="botao botao--contorno" href="/app">Sair do modo Caixa</Link>
+      </div>
     </>
   );
 }

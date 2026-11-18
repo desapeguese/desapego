@@ -9,6 +9,7 @@ import {
   CHAVE_LIMITE_CAIXA,
   ErroLedger,
   estornar,
+  fecharCaixa,
   listarExtrato,
   obterTransacaoDe,
   obterSaldo,
@@ -29,6 +30,7 @@ const mover = (p: Omit<PedidoTransferencia, "chaveIdempotencia"> & { chaveIdempo
   transferir(db, { chaveIdempotencia: chave(), ...p });
 
 const saldo = async (id: string) => (await obterSaldo(db, id)).saldo;
+const saldoCaixa = async (id: string) => (await obterSaldo(db, id)).saldoCaixa;
 
 async function espera(codigo: string, promessa: Promise<unknown>) {
   const erro = await promessa.then(
@@ -60,8 +62,11 @@ describe("soma zero", () => {
 
     expect(await saldo("ana")).toBe(77);
     expect(await saldo("bia")).toBe(30);
-    expect(await saldo("caixa")).toBe(-100);
-    expect(await saldo("admin")).toBe(-7);
+    // O balcão mexe no saldo de caixa de quem opera; o pessoal fica intacto.
+    expect(await saldo("caixa")).toBe(0);
+    expect(await saldoCaixa("caixa")).toBe(-100);
+    expect(await saldo("admin")).toBe(0);
+    expect(await saldoCaixa("admin")).toBe(-7);
     expect(await verificarIntegridade(db)).toMatchObject({ somaSaldos: 0, integro: true });
   });
 
@@ -70,7 +75,11 @@ describe("soma zero", () => {
     await db.update(schema.conta).set({ saldo: 999 }).where(eq(schema.conta.usuarioId, "ana"));
     const r = await verificarIntegridade(db);
     expect(r.integro).toBe(false);
-    expect(r.contasDivergentes).toEqual([{ usuario_id: "ana", saldo: 999, calculado: 10 }]);
+    expect(r.contasDivergentes).toMatchObject([{ usuario_id: "ana", saldo: 999, calculado: 10 }]);
+    await db.update(schema.conta).set({ saldo: 10, saldoCaixa: 5 }).where(eq(schema.conta.usuarioId, "ana"));
+    expect((await verificarIntegridade(db)).contasDivergentes).toMatchObject([
+      { usuario_id: "ana", saldo_caixa: 5, calculado_caixa: 0 },
+    ]);
   });
 
   it("o banco recusa alterar ou apagar uma transação", async () => {
@@ -124,7 +133,8 @@ describe("permissões", () => {
     await espera("SEM_PERMISSAO", mover({ operadorId: "caixa", contraparteId: "admin", tipo: "saque_cedula", valor: 1 }));
     await pessoa("admin2", "admin");
     await mover({ operadorId: "admin", contraparteId: "admin2", tipo: "tomar", valor: 1, descricao: "x" });
-    await mover({ operadorId: "admin", contraparteId: "caixa", tipo: "tomar", valor: 1, descricao: "x" });
+    await mover({ operadorId: "admin", contraparteId: "ana", tipo: "dar", valor: 1, descricao: "x" });
+    await mover({ operadorId: "admin", contraparteId: "ana", tipo: "tomar", valor: 1, descricao: "x" });
   });
 });
 
@@ -137,11 +147,31 @@ describe("limites", () => {
     expect(await saldo("ana")).toBe(0);
   });
 
-  it("Caixa distribui até −1000 e nem um a mais", async () => {
+  it("Caixa distribui até −1000 do saldo de caixa e nem um a mais", async () => {
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 1000, descricao: "x" });
     await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 1, descricao: "x" }));
     await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "deposito_cedula", valor: 1 }));
-    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: -1000, limite: 1000, disponivel: 0 });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 0, disponivel: 0, saldoCaixa: -1000, limiteCaixa: 1000, disponivelCaixa: 0 });
+  });
+
+  it("os dois saldos não se misturam: o pessoal do Caixa não paga o balcão, e o limite do caixa não serve a envios", async () => {
+    // O Caixa tem 50 pessoais (recebeu de outro Caixa, como qualquer participante).
+    await pessoa("caixa2", "caixa");
+    await mover({ operadorId: "caixa2", contraparteId: "caixa", tipo: "dar", valor: 50, descricao: "x" });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 50, saldoCaixa: 0, disponivelCaixa: 1000 });
+
+    // No balcão ele usa só o saldo de caixa...
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 300, descricao: "x" });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 50, saldoCaixa: -300, disponivelCaixa: 700 });
+    // ...e o que recebe no balcão volta para o saldo de caixa, não para o bolso.
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 100, descricao: "x" });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 50, saldoCaixa: -200 });
+
+    // Como pessoa, só envia os 50 que são dele.
+    await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "bia", tipo: "envio", valor: 51 }));
+    await mover({ operadorId: "caixa", contraparteId: "bia", tipo: "envio", valor: 50 });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 0, saldoCaixa: -200 });
+    expect((await verificarIntegridade(db)).integro).toBe(true);
   });
 
   it("o padrão global do Caixa é configurável", async () => {
@@ -150,44 +180,63 @@ describe("limites", () => {
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 50, descricao: "x" });
   });
 
-  it("limite individual vence o padrão, para Caixa e para usuário", async () => {
+  it("limite individual vale para o saldo de caixa, nunca para o pessoal", async () => {
     await db.insert(schema.conta).values([
       { usuarioId: "caixa", limiteNegativo: 2000 },
       { usuarioId: "ana", limiteNegativo: 40 },
     ]);
     await mover({ operadorId: "caixa", contraparteId: "bia", tipo: "dar", valor: 2000, descricao: "x" });
-    await mover({ operadorId: "ana", contraparteId: "bia", tipo: "envio", valor: 40 });
+    // Um limite gravado na conta de um usuário comum não lhe dá crédito.
     await espera("SALDO_INSUFICIENTE", mover({ operadorId: "ana", contraparteId: "bia", tipo: "envio", valor: 1 }));
-    expect(await saldo("ana")).toBe(-40);
   });
 
-  it("Admin não tem limite", async () => {
+  it("Admin não tem limite, nem no caixa nem no pessoal", async () => {
     await mover({ operadorId: "admin", contraparteId: "ana", tipo: "dar", valor: 1_000_000, descricao: "x" });
-    expect(await obterSaldo(db, "admin")).toMatchObject({ saldo: -1_000_000, limite: null, disponivel: null });
+    await mover({ operadorId: "admin", contraparteId: "ana", tipo: "envio", valor: 10 });
+    expect(await obterSaldo(db, "admin")).toMatchObject({ saldo: -10, disponivel: null, saldoCaixa: -1_000_000, limiteCaixa: null, disponivelCaixa: null });
   });
 
-  it("Tomar que deixa a pessoa negativa pede confirmação e depois passa", async () => {
+  it("no balcão ninguém fica negativo: Receber e saque além do saldo da pessoa são recusados", async () => {
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 10, descricao: "x" });
-    const erro = await espera("CONFIRMACAO_NECESSARIA", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 25, descricao: "casaco" }));
-    expect(erro.dados).toEqual({ saldoResultante: -15 });
+    const erro = await espera("SALDO_DA_PESSOA_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 25, descricao: "casaco" }));
+    expect(erro.dados).toEqual({ disponivel: 10, falta: 15 });
+    await espera("SALDO_DA_PESSOA_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "saque_cedula", valor: 11 }));
     expect(await saldo("ana")).toBe(10);
-
-    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 25, descricao: "casaco", confirmarNegativo: true });
-    expect(await saldo("ana")).toBe(-15);
-    // Negativa, a pessoa não consegue enviar.
-    await espera("SALDO_INSUFICIENTE", mover({ operadorId: "ana", contraparteId: "bia", tipo: "envio", valor: 1 }));
-  });
-
-  it("Tomar dentro do saldo não pede confirmação", async () => {
-    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 10, descricao: "x" });
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "saque_cedula", valor: 10 });
     expect(await saldo("ana")).toBe(0);
   });
+});
 
-  it("Caixa rebaixado com saldo negativo fica impedido de enviar", async () => {
+describe("fechamento de caixa", () => {
+  const fechar = (alvoId: string) => db.transaction((tx) => fecharCaixa(tx as unknown as Banco, { alvoId, adminId: "admin" }));
+
+  it("caixa negativo é coberto pelo Admin; o saldo pessoal não muda", async () => {
+    await pessoa("caixa2", "caixa");
+    await mover({ operadorId: "caixa2", contraparteId: "caixa", tipo: "dar", valor: 50, descricao: "x" });
     await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 300, descricao: "x" });
-    await db.update(schema.user).set({ papel: "usuario" }).where(eq(schema.user.id, "caixa"));
-    await espera("SALDO_INSUFICIENTE", mover({ operadorId: "caixa", contraparteId: "ana", tipo: "envio", valor: 1 }));
+
+    const t = await fechar("caixa");
+    expect(t).toMatchObject({ tipo: "fechamento_caixa", deConta: "admin", paraConta: "caixa", deCaixa: true, paraCaixa: true, valor: 300, operadorId: "admin" });
+    expect(await obterSaldo(db, "caixa")).toMatchObject({ saldo: 50, saldoCaixa: 0 });
+    expect(await obterSaldo(db, "admin")).toMatchObject({ saldo: 0, saldoCaixa: -300 });
+    expect((await verificarIntegridade(db)).integro).toBe(true);
+  });
+
+  it("caixa positivo é recolhido pelo Admin; zerado não gera transação", async () => {
+    await mover({ operadorId: "admin", contraparteId: "ana", tipo: "dar", valor: 80, descricao: "x" });
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 80, descricao: "x" });
+    expect(await saldoCaixa("caixa")).toBe(80);
+
+    expect(await fechar("caixa")).toMatchObject({ deConta: "caixa", paraConta: "admin", valor: 80 });
+    expect(await saldoCaixa("caixa")).toBe(0);
+    expect(await saldoCaixa("admin")).toBe(0);
+    expect(await fechar("caixa")).toBeNull();
+  });
+
+  it("não pode ser estornado", async () => {
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 5, descricao: "x" });
+    const t = await fechar("caixa");
+    await espera("SEM_PERMISSAO", estornar(db, { operadorId: "admin", transacaoId: t!.id, motivo: "x", chaveIdempotencia: chave() }));
   });
 });
 
@@ -229,7 +278,8 @@ describe("estorno", () => {
     const { transacao } = await estorno("caixa", original.id);
     expect(transacao).toMatchObject({ tipo: "estorno", deConta: "ana", paraConta: "caixa", valor: 40, estornoDe: original.id });
     expect(await saldo("ana")).toBe(0);
-    expect(await saldo("caixa")).toBe(0);
+    expect(await saldoCaixa("caixa")).toBe(0);
+    expect(transacao).toMatchObject({ deCaixa: false, paraCaixa: true });
     const log = await db.select().from(schema.auditoria);
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ atorId: "caixa", alvoId: "caixa", acao: "estorno" });
@@ -275,6 +325,22 @@ describe("extrato", () => {
       ["envio", -20, "bia", "carona"],
       ["dar", 50, "caixa", "bicicleta"],
     ]);
+  });
+
+  it("separa o extrato pessoal do extrato do modo Caixa", async () => {
+    await pessoa("caixa2", "caixa");
+    await mover({ operadorId: "caixa2", contraparteId: "caixa", tipo: "dar", valor: 50, descricao: "presente" });
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "dar", valor: 30, descricao: "bicicleta" });
+    await mover({ operadorId: "caixa", contraparteId: "ana", tipo: "tomar", valor: 10, descricao: "livro" });
+
+    const pessoal = await listarExtrato(db, "caixa");
+    expect(pessoal.linhas.map((l) => [l.tipo, l.valor, l.contraparteNome, l.contraparteNoCaixa])).toEqual([["dar", 50, "caixa2", true]]);
+    const doCaixa = await listarExtrato(db, "caixa", { lado: "caixa" });
+    expect(doCaixa.linhas.map((l) => [l.tipo, l.valor, l.contraparteNome, l.contraparteNoCaixa])).toEqual([
+      ["tomar", 10, "ana", false],
+      ["dar", -30, "ana", false],
+    ]);
+    expect((await listarExtrato(db, "ana", { lado: "caixa" })).linhas).toEqual([]);
   });
 
   it("pagina sem pular nem repetir, e não mostra transações alheias", async () => {

@@ -10,7 +10,7 @@ const archivo = Archivo({
 });
 
 const SITE = "https://desapego.festivaldesapeguese.com.br";
-const TITULO = "Moeda Social Desapego — Uma nova economia é possível";
+const TITULO = "Moeda Social Desapego — A riqueza está em circular";
 const DESCRICAO =
   "A Desapego é a moeda social do Festival: dinheiro alternativo que circula " +
   "nos territórios, estimula a economia local e fortalece as relações entre " +

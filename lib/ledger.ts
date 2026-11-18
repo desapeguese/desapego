@@ -14,11 +14,16 @@ import {
  * O livro da moeda. Todo movimento de Desapego passa por este arquivo, e as
  * regras da seção 2 do PRD moram aqui e em nenhum outro lugar:
  *
- * - cada transação debita uma conta e credita outra no mesmo valor, então a
+ * - cada transação debita um saldo e credita outro no mesmo valor, então a
  *   soma de todos os saldos é sempre zero;
- * - o limite negativo vale para quem inicia a saída; Tomar, saque e estorno
- *   podem deixar a outra ponta negativa;
- * - transações nunca são alteradas, só estornadas.
+ * - cada pessoa tem dois saldos na mesma conta: o pessoal e o de caixa. As
+ *   operações de balcão (dar, tomar, cédulas) movem o saldo de caixa de quem
+ *   opera e o saldo pessoal da outra pessoa; envios movem só saldos pessoais;
+ * - o saldo pessoal não fica negativo (só o do Admin, que não tem limite); o
+ *   saldo de caixa pode, até o limite do Caixa;
+ * - transações nunca são alteradas, só estornadas. O estorno é a única
+ *   operação que pode deixar alguém negativo sem querer: desfazer um erro não
+ *   pode depender de a pessoa ainda ter o saldo.
  */
 
 export const LIMITE_PADRAO_CAIXA = 1000;
@@ -32,7 +37,7 @@ export type CodigoErro =
   | "SEM_PERMISSAO"
   | "DESCRICAO_OBRIGATORIA"
   | "SALDO_INSUFICIENTE"
-  | "CONFIRMACAO_NECESSARIA"
+  | "SALDO_DA_PESSOA_INSUFICIENTE"
   | "TRANSACAO_NAO_ENCONTRADA"
   | "JA_ESTORNADA"
   | "CHAVE_REUTILIZADA";
@@ -41,7 +46,7 @@ export class ErroLedger extends Error {
   constructor(
     public codigo: CodigoErro,
     mensagem: string,
-    /** Números para a tela explicar o erro (quanto falta, saldo resultante). */
+    /** Números para a tela explicar o erro (quanto há disponível, quanto falta). */
     public dados: Record<string, number> = {},
   ) {
     super(mensagem);
@@ -51,10 +56,12 @@ export class ErroLedger extends Error {
 
 export type Transacao = typeof transacao.$inferSelect;
 
-/** Tipos em que o valor sai da conta de quem opera. */
+/** Tipos em que o valor sai de quem opera. */
 const SAI_DO_OPERADOR = new Set<TipoTransacao>(["envio", "dar", "deposito_cedula"]);
-/** Tipos em que o valor sai da conta da outra pessoa e entra na de quem opera. */
+/** Tipos em que o valor sai da outra pessoa e entra em quem opera. */
 const ENTRA_NO_OPERADOR = new Set<TipoTransacao>(["tomar", "saque_cedula"]);
+/** Operações de balcão: a ponta de quem opera é o saldo de caixa. */
+const DE_BALCAO = new Set<TipoTransacao>(["dar", "tomar", "deposito_cedula", "saque_cedula"]);
 
 const DESCRICAO_PADRAO: Partial<Record<TipoTransacao, string>> = {
   deposito_cedula: "Depósito de cédulas",
@@ -71,15 +78,13 @@ async function limitePadraoCaixa(tx: Tx | Banco): Promise<number> {
   return linha?.valor ?? LIMITE_PADRAO_CAIXA;
 }
 
-/** Quanto a conta pode ficar abaixo de zero. `null` = sem limite. */
-function limiteEfetivo(
-  papel: Papel,
-  limiteDaConta: number | null,
-  padraoCaixa: number,
-): number | null {
+/** Quanto o saldo pessoal pode ficar abaixo de zero. `null` = sem limite. */
+const limitePessoal = (papel: Papel): number | null => (papel === "admin" ? null : 0);
+
+/** Quanto o saldo de caixa pode ficar abaixo de zero. `null` = sem limite. */
+function limiteDoCaixa(papel: Papel, limiteDaConta: number | null, padrao: number): number | null {
   if (papel === "admin") return null;
-  if (limiteDaConta !== null) return limiteDaConta;
-  return papel === "caixa" ? padraoCaixa : 0;
+  return limiteDaConta ?? padrao;
 }
 
 async function carregarPessoas(tx: Tx, ids: string[]) {
@@ -113,13 +118,15 @@ async function mover(
   dados: Omit<typeof transacao.$inferInsert, "id" | "criadaEm">,
 ): Promise<Transacao> {
   const [criada] = await tx.insert(transacao).values(dados).returning();
+  const sai = dados.deCaixa ? conta.saldoCaixa : conta.saldo;
+  const entra = dados.paraCaixa ? conta.saldoCaixa : conta.saldo;
   await tx
     .update(conta)
-    .set({ saldo: sql`${conta.saldo} - ${dados.valor}`, atualizadaEm: sql`now()` })
+    .set({ [dados.deCaixa ? "saldoCaixa" : "saldo"]: sql`${sai} - ${dados.valor}`, atualizadaEm: sql`now()` })
     .where(eq(conta.usuarioId, dados.deConta));
   await tx
     .update(conta)
-    .set({ saldo: sql`${conta.saldo} + ${dados.valor}`, atualizadaEm: sql`now()` })
+    .set({ [dados.paraCaixa ? "saldoCaixa" : "saldo"]: sql`${entra} + ${dados.valor}`, atualizadaEm: sql`now()` })
     .where(eq(conta.usuarioId, dados.paraConta));
   return criada;
 }
@@ -141,15 +148,10 @@ export type PedidoTransferencia = {
   operadorId: string;
   /** A outra pessoa. */
   contraparteId: string;
-  tipo: Exclude<TipoTransacao, "estorno">;
+  tipo: Exclude<TipoTransacao, "estorno" | "fechamento_caixa">;
   valor: number;
   descricao?: string;
   chaveIdempotencia: string;
-  /**
-   * Tomar e saque que deixariam a pessoa negativa (ou além do limite dela) só
-   * passam com isto ligado, depois de o Caixa ver o aviso.
-   */
-  confirmarNegativo?: boolean;
 };
 
 export async function transferir(
@@ -185,7 +187,8 @@ export async function transferir(
     if (!operador.ativo || !contraparte.ativo) {
       throw new ErroLedger("CONTA_DESATIVADA", "Conta desativada.");
     }
-    if (tipo !== "envio" && operador.papel === "usuario") {
+    const deBalcao = DE_BALCAO.has(tipo);
+    if (deBalcao && operador.papel === "usuario") {
       throw new ErroLedger("SEM_PERMISSAO", "Operação restrita ao Caixa.");
     }
     if (ENTRA_NO_OPERADOR.has(tipo) && operador.papel === "caixa" && contraparte.papel === "admin") {
@@ -195,41 +198,38 @@ export async function transferir(
     const saiDoOperador = SAI_DO_OPERADOR.has(tipo);
     const pagador = saiDoOperador ? operador : contraparte;
     const recebedor = saiDoOperador ? contraparte : operador;
+    // No balcão, a ponta de quem opera é o saldo de caixa; a outra, o pessoal.
+    const deCaixa = deBalcao && saiDoOperador;
+    const paraCaixa = deBalcao && !saiDoOperador;
 
     const contas = await travarContas(tx, [operadorId, contraparteId]);
     // Duas tentativas simultâneas com a mesma chave passam juntas pela checagem
     // do início; com as contas travadas, a segunda enxerga a primeira aqui.
     const concorrente = await buscarPorChave(tx, chaveIdempotencia, operadorId);
     if (concorrente) return { transacao: concorrente, repetida: true };
-    const contaPagador = contas.get(pagador.id)!;
-    const limite = limiteEfetivo(
-      pagador.papel,
-      contaPagador.limiteNegativo,
-      await limitePadraoCaixa(tx),
-    );
-    const saldoResultante = contaPagador.saldo - valor;
 
-    if (limite !== null && saldoResultante < -limite) {
-      if (saiDoOperador) {
-        const disponivel = Math.max(0, contaPagador.saldo + limite);
-        throw new ErroLedger("SALDO_INSUFICIENTE", "Saldo insuficiente.", {
-          disponivel,
-          falta: valor - disponivel,
-        });
-      }
-      if (!pedido.confirmarNegativo) {
-        throw new ErroLedger(
-          "CONFIRMACAO_NECESSARIA",
-          "Essa operação deixa a pessoa com saldo negativo.",
-          { saldoResultante },
-        );
-      }
+    const contaPagador = contas.get(pagador.id)!;
+    const saldoAtual = deCaixa ? contaPagador.saldoCaixa : contaPagador.saldo;
+    const limite = deCaixa
+      ? limiteDoCaixa(pagador.papel, contaPagador.limiteNegativo, await limitePadraoCaixa(tx))
+      : limitePessoal(pagador.papel);
+
+    if (limite !== null && saldoAtual - valor < -limite) {
+      const disponivel = Math.max(0, saldoAtual + limite);
+      const dados = { disponivel, falta: valor - disponivel };
+      // Quem não tem saldo é quem opera (envio, pagar) ou a pessoa atendida
+      // (receber, saque): a tela precisa dizer qual dos dois.
+      throw saiDoOperador
+        ? new ErroLedger("SALDO_INSUFICIENTE", "Saldo insuficiente.", dados)
+        : new ErroLedger("SALDO_DA_PESSOA_INSUFICIENTE", "A pessoa não tem saldo suficiente.", dados);
     }
 
     const criada = await mover(tx, {
       tipo,
       deConta: pagador.id,
       paraConta: recebedor.id,
+      deCaixa,
+      paraCaixa,
       valor,
       descricao,
       operadorId,
@@ -247,8 +247,9 @@ export type PedidoEstorno = {
 };
 
 /**
- * Cria a transação inversa. Não checa limite: desfazer um erro não pode
- * depender de a pessoa ainda ter o saldo, então ela pode ficar negativa.
+ * Cria a transação inversa, devolvendo o valor aos mesmos saldos de onde saiu.
+ * Não checa limite: desfazer um erro não pode depender de a pessoa ainda ter o
+ * saldo, então ela pode ficar negativa.
  */
 export async function estornar(
   db: Banco,
@@ -279,6 +280,9 @@ export async function estornar(
     if (original.tipo === "estorno") {
       throw new ErroLedger("SEM_PERMISSAO", "Um estorno não pode ser estornado.");
     }
+    if (original.tipo === "fechamento_caixa") {
+      throw new ErroLedger("SEM_PERMISSAO", "Um fechamento de caixa não pode ser estornado.");
+    }
     if (operador.papel === "caixa" && original.operadorId !== pedido.operadorId) {
       throw new ErroLedger("SEM_PERMISSAO", "O Caixa só estorna as próprias operações.");
     }
@@ -298,6 +302,8 @@ export async function estornar(
       tipo: "estorno",
       deConta: original.paraConta,
       paraConta: original.deConta,
+      deCaixa: original.paraCaixa,
+      paraCaixa: original.deCaixa,
       valor: original.valor,
       descricao: motivo,
       operadorId: pedido.operadorId,
@@ -315,8 +321,37 @@ export async function estornar(
 }
 
 /**
- * Saldo, limite, quanto ainda dá para enviar e o número sequencial da conta.
- * `disponivel` nulo = sem limite.
+ * Zera o saldo de caixa de quem deixou de ser Caixa, passando-o (negativo ou
+ * positivo) ao saldo de caixa do Admin que tirou o perfil. Roda dentro da
+ * transação de banco de quem chama, junto com a mudança de perfil. Devolve a
+ * transação criada, ou `null` se o saldo de caixa já era zero.
+ */
+export async function fecharCaixa(
+  tx: Banco,
+  dados: { alvoId: string; adminId: string },
+): Promise<Transacao | null> {
+  const t = tx as unknown as Tx;
+  const contas = await travarContas(t, [dados.alvoId, dados.adminId]);
+  const saldoCaixa = contas.get(dados.alvoId)!.saldoCaixa;
+  if (saldoCaixa === 0) return null;
+  const devedor = saldoCaixa < 0;
+  return mover(t, {
+    tipo: "fechamento_caixa",
+    // Caixa negativo: o Admin cobre. Positivo: o Admin recolhe.
+    deConta: devedor ? dados.adminId : dados.alvoId,
+    paraConta: devedor ? dados.alvoId : dados.adminId,
+    deCaixa: true,
+    paraCaixa: true,
+    valor: Math.abs(saldoCaixa),
+    descricao: "Fechamento de caixa",
+    operadorId: dados.adminId,
+    chaveIdempotencia: `fechamento:${dados.alvoId}:${crypto.randomUUID()}`,
+  });
+}
+
+/**
+ * Os dois saldos de uma pessoa e o número sequencial da conta.
+ * `disponivel` e `disponivelCaixa` nulos = sem limite (Admin).
  */
 export async function obterSaldo(db: Banco, usuarioId: string) {
   const ler = () =>
@@ -325,6 +360,7 @@ export async function obterSaldo(db: Banco, usuarioId: string) {
         papel: user.papel,
         numero: conta.numero,
         saldo: conta.saldo,
+        saldoCaixa: conta.saldoCaixa,
         limiteNegativo: conta.limiteNegativo,
       })
       .from(user)
@@ -341,40 +377,53 @@ export async function obterSaldo(db: Banco, usuarioId: string) {
   }
 
   const saldo = linha.saldo ?? 0;
-  const limite = limiteEfetivo(linha.papel, linha.limiteNegativo, await limitePadraoCaixa(db));
+  const saldoCaixa = linha.saldoCaixa ?? 0;
+  const limiteCaixa = limiteDoCaixa(linha.papel, linha.limiteNegativo, await limitePadraoCaixa(db));
   return {
     numero: linha.numero ?? 0,
+    /** Saldo pessoal e quanto dele dá para enviar. */
     saldo,
-    limite,
-    disponivel: limite === null ? null : Math.max(0, saldo + limite),
+    disponivel: limitePessoal(linha.papel) === null ? null : Math.max(0, saldo),
+    /** Saldo do modo Caixa, o limite dele e quanto ainda dá para distribuir. */
+    saldoCaixa,
+    limiteCaixa,
+    disponivelCaixa: limiteCaixa === null ? null : Math.max(0, saldoCaixa + limiteCaixa),
   };
 }
 
 /**
- * Auditoria do próprio livro: a soma dos saldos tem de ser zero e o saldo de
- * cada conta tem de bater com o histórico dela.
+ * Auditoria do próprio livro: a soma de todos os saldos (pessoais e de caixa)
+ * tem de ser zero, e cada saldo tem de bater com o histórico dele.
  */
 export async function verificarIntegridade(db: Banco) {
   const [{ soma }] = await db
-    .select({ soma: sql<number>`coalesce(sum(${conta.saldo}), 0)::int` })
+    .select({ soma: sql<number>`coalesce(sum(${conta.saldo} + ${conta.saldoCaixa}), 0)::int` })
     .from(conta);
 
-  const divergentes = await db.execute<{ usuario_id: string; saldo: number; calculado: number }>(sql`
-    select c.usuario_id, c.saldo, coalesce(m.total, 0)::int as calculado
+  const divergentes = await db.execute(sql`
+    select c.usuario_id, c.saldo, coalesce(m.pessoal, 0)::int as calculado,
+           c.saldo_caixa, coalesce(m.caixa, 0)::int as calculado_caixa
     from ${conta} c
     left join (
-      select conta_id, sum(delta) as total from (
-        select ${transacao.paraConta} as conta_id, ${transacao.valor} as delta from ${transacao}
+      select conta_id,
+             sum(delta) filter (where not caixa) as pessoal,
+             sum(delta) filter (where caixa) as caixa
+      from (
+        select t.para_conta as conta_id, t.para_caixa as caixa, t.valor as delta from ${transacao} t
         union all
-        select ${transacao.deConta}, -${transacao.valor} from ${transacao}
+        select t.de_conta, t.de_caixa, -t.valor from ${transacao} t
       ) movimentos group by conta_id
     ) m on m.conta_id = c.usuario_id
-    where c.saldo <> coalesce(m.total, 0)
+    where c.saldo <> coalesce(m.pessoal, 0) or c.saldo_caixa <> coalesce(m.caixa, 0)
   `);
 
-  const contasDivergentes = (
-    "rows" in divergentes ? divergentes.rows : divergentes
-  ) as { usuario_id: string; saldo: number; calculado: number }[];
+  const contasDivergentes = ("rows" in divergentes ? divergentes.rows : divergentes) as unknown as {
+    usuario_id: string;
+    saldo: number;
+    calculado: number;
+    saldo_caixa: number;
+    calculado_caixa: number;
+  }[];
   return { somaSaldos: soma, contasDivergentes, integro: soma === 0 && contasDivergentes.length === 0 };
 }
 
@@ -391,6 +440,8 @@ export type LinhaExtrato = {
   descricao: string;
   contraparteId: string;
   contraparteNome: string;
+  /** A outra ponta foi o saldo de caixa de alguém (uma operação de balcão). */
+  contraparteNoCaixa: boolean;
   estornoDe: string | null;
 };
 
@@ -401,9 +452,15 @@ export type LinhaExtrato = {
 export async function listarExtrato(
   db: Banco,
   usuarioId: string,
-  opcoes: { limite?: number; cursor?: string | null } = {},
+  opcoes: {
+    limite?: number;
+    cursor?: string | null;
+    /** O extrato do saldo pessoal (padrão) ou o do modo Caixa. */
+    lado?: "pessoal" | "caixa";
+  } = {},
 ): Promise<{ linhas: LinhaExtrato[]; proximo: string | null }> {
   const limite = Math.min(Math.max(opcoes.limite ?? 20, 1), 100);
+  const caixa = opcoes.lado === "caixa";
 
   // O cursor é "instante|id". O instante vem do próprio banco como texto, com
   // os microssegundos, porque um Date do JavaScript os perderia e a paginação
@@ -419,12 +476,13 @@ export async function listarExtrato(
 
   const resultado = await db.execute(sql`
     select t.id, t.criada_em, t.criada_em::text as cursor_instante, t.tipo, t.valor,
-           t.descricao, t.estorno_de, t.de_conta, t.para_conta,
+           t.descricao, t.estorno_de, t.de_conta, t.para_conta, t.de_caixa, t.para_caixa,
            de.name as de_nome, para.name as para_nome
     from ${transacao} t
     join ${user} de on de.id = t.de_conta
     join ${user} para on para.id = t.para_conta
-    where (t.de_conta = ${usuarioId} or t.para_conta = ${usuarioId}) and ${aPartirDe}
+    where ((t.de_conta = ${usuarioId} and t.de_caixa = ${caixa})
+        or (t.para_conta = ${usuarioId} and t.para_caixa = ${caixa})) and ${aPartirDe}
     order by t.criada_em desc, t.id desc
     limit ${limite + 1}
   `);
@@ -438,6 +496,8 @@ export async function listarExtrato(
     estorno_de: string | null;
     de_conta: string;
     para_conta: string;
+    de_caixa: boolean;
+    para_caixa: boolean;
     de_nome: string;
     para_nome: string;
   };
@@ -447,7 +507,7 @@ export async function listarExtrato(
   const ultima = pagina.at(-1);
   return {
     linhas: pagina.map((b) => {
-      const entrou = b.para_conta === usuarioId;
+      const entrou = b.para_conta === usuarioId && b.para_caixa === caixa;
       return {
         id: b.id,
         criadaEm: new Date(b.criada_em),
@@ -456,6 +516,7 @@ export async function listarExtrato(
         descricao: b.descricao,
         contraparteId: entrou ? b.de_conta : b.para_conta,
         contraparteNome: entrou ? b.de_nome : b.para_nome,
+        contraparteNoCaixa: entrou ? b.de_caixa : b.para_caixa,
         estornoDe: b.estorno_de,
       };
     }),
@@ -487,6 +548,7 @@ export async function obterTransacaoDe(
     descricao: t.descricao,
     contraparteId,
     contraparteNome: contraparte?.nome ?? "",
+    contraparteNoCaixa: entrou ? t.deCaixa : t.paraCaixa,
     estornoDe: t.estornoDe,
   };
 }
@@ -505,7 +567,7 @@ export type TransacaoCompleta = Transacao & {
 
 async function completar(db: Banco, filtro: ReturnType<typeof sql>, limite: number) {
   const resultado = await db.execute(sql`
-    select t.id, t.criada_em, t.tipo, t.de_conta, t.para_conta, t.valor, t.descricao,
+    select t.id, t.criada_em, t.tipo, t.de_conta, t.para_conta, t.de_caixa, t.para_caixa, t.valor, t.descricao,
            t.operador_id, t.estorno_de, t.chave_idempotencia,
            de.name as de_nome, para.name as para_nome, op.name as operador_nome,
            (select e.id from ${transacao} e where e.estorno_de = t.id) as estornada_por
@@ -525,6 +587,8 @@ async function completar(db: Banco, filtro: ReturnType<typeof sql>, limite: numb
       tipo: l.tipo,
       deConta: l.de_conta,
       paraConta: l.para_conta,
+      deCaixa: l.de_caixa,
+      paraCaixa: l.para_caixa,
       valor: l.valor,
       descricao: l.descricao,
       operadorId: l.operador_id,
@@ -561,6 +625,6 @@ export function podeEstornar(
   ator: { id: string; papel: Papel },
   t: Pick<TransacaoCompleta, "tipo" | "operadorId" | "estornadaPor">,
 ): boolean {
-  if (t.tipo === "estorno" || t.estornadaPor) return false;
+  if (t.tipo === "estorno" || t.tipo === "fechamento_caixa" || t.estornadaPor) return false;
   return ator.papel === "admin" || (ator.papel === "caixa" && t.operadorId === ator.id);
 }

@@ -5,4 +5,4 @@ export const exigirEquipe = () => exigirPessoa({ papeis: ["caixa", "admin"] });
 
 export const NOME_PAPEL = { usuario: null, caixa: "Caixa", admin: "Admin" } as const;
 
-export const VOLTAR_AO_CAIXA = { href: "/app/caixa", rotulo: "Voltar ao Caixa" };
+export const VOLTAR_AO_CAIXA = { href: "/app/caixa", rotulo: "Voltar ao modo Caixa" };

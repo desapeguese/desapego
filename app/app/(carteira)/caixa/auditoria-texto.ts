@@ -13,13 +13,18 @@ export function descreverAuditoria(linha: Pick<LinhaAuditoria, "acao" | "detalhe
     case "termos_aceitos":
       return `Aceitou os termos (versão ${String(d.versao ?? "?")})`;
     case "desativada":
-      return "Conta desativada";
+      return d.motivo ? `Conta bloqueada (${String(d.motivo)})` : "Conta bloqueada";
+    case "conta_encerrada":
+      return "Conta encerrada e dados pessoais apagados";
     case "reativada":
       return "Conta reativada";
     case "papel_alterado":
       return (
         `Perfil alterado de ${PERFIS[String(d.de)] ?? String(d.de)} para ${PERFIS[String(d.para)] ?? String(d.para)}` +
-        (d.origem ? " (configuração do servidor)" : "")
+        (d.origem ? " (configuração do servidor)" : "") +
+        (typeof d.caixaFechado === "number"
+          ? `; caixa fechado: D$ ${d.caixaFechado} ${d.caixaFechado < 0 ? "assumidos" : "recolhidos"} por quem alterou`
+          : "")
       );
     case "limite_alterado":
       return `Limite negativo alterado de ${limite(d.de)} para ${limite(d.para)}`;

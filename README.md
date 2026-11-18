@@ -95,6 +95,24 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
   permissões por perfil, idempotência e estorno, e é isso que `npm test` cobre.
 - **`transacao` é imutável.** Um trigger no banco recusa `UPDATE`, `DELETE` e
   `TRUNCATE`; erros se corrigem com estorno.
+- **Dois saldos por conta: o pessoal e o de caixa.** As operações de balcão
+  (Pagar, Receber, cédulas) movem o saldo de caixa de quem opera e o saldo
+  pessoal da outra pessoa; envios movem só saldos pessoais. Cada transação
+  grava de qual saldo saiu e em qual entrou (`de_caixa`, `para_caixa`). O
+  "modo Caixa" da tela é a área `/app/caixa`, que mostra o saldo de caixa.
+- **O saldo pessoal não fica negativo** (só o do Admin, que não tem limite):
+  envio, Receber e saque são recusados sem saldo. A exceção é o estorno, que
+  desfaz um erro mesmo que a pessoa já tenha gasto. O saldo de caixa pode ficar
+  negativo até o limite do Caixa.
+- **Tirar o perfil de Caixa fecha o caixa:** uma transação `fechamento_caixa`
+  passa o saldo de caixa da pessoa (negativo ou positivo) ao caixa do Admin que
+  tirou o perfil. O histórico do modo Caixa dela continua consultável no
+  relatório ("Modo Caixa de").
+- **Registro de acessos:** cada login grava IP, data e hora em `acesso`, por
+  seis meses (Marco Civil, art. 15).
+- **Encerramento de conta (LGPD):** `anonimizarPessoa` apaga nome, e-mail,
+  telefone e credenciais e limpa o registro da conta; as transações ficam.
+  Exige saldos zerados e não tem volta.
 - **Toda mudança em uma pessoa passa por `lib/pessoas.ts`** e deixa uma linha
   em `auditoria`. O Caixa só edita e desativa usuário comum; o Admin, qualquer
   um; o último Admin ativo não pode ser desativado.
@@ -152,7 +170,7 @@ As cores e os logos vêm do **Manual de Identidade Visual do Festival** (versão
 | `app/api/eventos/` | Avisos em tempo real (Server-Sent Events). |
 | `app/manifest.ts`, `public/sw.js`, `public/sem-conexao.html` | PWA: manifesto, service worker e a tela sem internet. |
 | `public/icone-*-v2.png` | Ícones do PWA, gerados por `scripts/gerar-icones.mjs` a partir do símbolo do Festival. |
-| `app/termos/` | Termos de uso e privacidade, texto aprovado pela organização em 07/11/2026 (cópia em `docs/termos-de-uso.md`). Ao mudar o texto, mude `VERSAO_TERMOS` em `lib/sessao.ts`. |
+| `app/termos/` | Termos de uso e privacidade, revisão jurídica de 13/11/2026. A fonte é `docs/termos-de-uso.md`; a página é gerada a partir dela. Ao mudar o texto, mude `VERSAO_TERMOS` em `lib/sessao.ts`. |
 | `app/api/auth/` | Rotas do Better Auth. |
 | `lib/ledger.ts` | O livro da moeda. |
 | `lib/pessoas.ts` | Gestão de pessoas pelo Caixa e Admin: busca, cadastro, edição, desativação e auditoria, com as permissões por perfil. |

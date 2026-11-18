@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { corDaPessoa, iniciais, inteiro, moeda, numeroDeSerie, SALDO_QUE_EXIGE_2FA } from "@/lib/formato";
+import { corDaPessoa, iniciais, inteiro, numeroDeSerie, SALDO_QUE_EXIGE_2FA } from "@/lib/formato";
 import { listarExtrato, obterSaldo } from "@/lib/ledger";
 import { tem2FA } from "@/lib/auth";
 import { exigirPessoa } from "@/lib/sessao";
@@ -11,7 +11,7 @@ import { AvisoProtecao } from "./protecao";
 
 export default async function Carteira() {
   const pessoa = await exigirPessoa();
-  const [{ saldo, disponivel, numero }, { linhas, proximo }] = await Promise.all([
+  const [{ saldo, numero }, { linhas, proximo }] = await Promise.all([
     obterSaldo(db, pessoa.id),
     listarExtrato(db, pessoa.id, { limite: 5 }),
   ]);
@@ -44,9 +44,6 @@ export default async function Carteira() {
         pe={
           <p className="nota-pe">
             {pessoa.name}
-            {pessoa.papel === "caixa" && disponivel !== null && (
-              <small>Caixa · pode distribuir {moeda(disponivel)}</small>
-            )}
             {pessoa.papel === "admin" && <small>Admin · sem limite negativo</small>}
           </p>
         }
@@ -78,7 +75,7 @@ export default async function Carteira() {
       {pessoa.papel !== "usuario" && (
         <nav className="acoes" aria-label="Equipe">
           <Link className="botao botao--contorno" href="/app/caixa">
-            Caixa
+            Modo Caixa
           </Link>
           {pessoa.papel === "admin" && (
             <Link className="botao botao--contorno" href="/app/admin">

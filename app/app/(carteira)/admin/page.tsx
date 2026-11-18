@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { inteiro, moeda } from "@/lib/formato";
-import { listarEquipe, obterLimitePadraoCaixa } from "@/lib/pessoas";
+import { listarCaixas, listarEquipe, obterLimitePadraoCaixa } from "@/lib/pessoas";
 import { retratoAtual, type SaldoDestaque } from "@/lib/relatorios";
 import { exigirPessoa } from "@/lib/sessao";
 import { Avatar } from "../../pecas";
@@ -39,9 +39,10 @@ function Destaques({ titulo, pessoas, vazio }: { titulo: string; pessoas: SaldoD
 
 export default async function Admin({ searchParams }: { searchParams: Promise<{ aviso?: string }> }) {
   const ator = await exigirPessoa({ papeis: ["admin"] });
-  const [retrato, equipe, limitePadrao, { aviso }] = await Promise.all([
+  const [retrato, equipe, equipeECaixas, limitePadrao, { aviso }] = await Promise.all([
     retratoAtual(db),
     listarEquipe(db, ator),
+    listarCaixas(db, ator),
     obterLimitePadraoCaixa(db),
     searchParams,
   ]);
@@ -72,9 +73,9 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
             <small>soma dos saldos positivos</small>
           </div>
           <div>
-            <dt>emitido pela organização</dt>
-            <dd>{moeda(Math.abs(retrato.negativoDaOrganizacao))}</dd>
-            <small>saldo negativo de Caixas e Admins</small>
+            <dt>saldo dos caixas</dt>
+            <dd>{moeda(retrato.saldoDosCaixas)}</dd>
+            <small>o que o balcão emitiu, menos o que recolheu</small>
           </div>
           <div>
             <dt>pessoas</dt>
@@ -94,7 +95,37 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
       </section>
 
       <Destaques titulo="Maiores saldos positivos" pessoas={retrato.maioresPositivos} vazio="Ninguém com saldo positivo." />
-      <Destaques titulo="Maiores saldos negativos" pessoas={retrato.maioresNegativos} vazio="Ninguém com saldo negativo." />
+      {retrato.maioresNegativos.length > 0 && (
+        <Destaques titulo="Saldos pessoais negativos" pessoas={retrato.maioresNegativos} vazio="" />
+      )}
+
+      <section aria-labelledby="titulo-caixas">
+        <h2 className="secao-titulo" id="titulo-caixas">Caixas</h2>
+        <p className="mensagem">
+          O saldo do modo Caixa de cada pessoa. Toque para ver tudo o que ela movimentou no balcão.
+        </p>
+        {equipeECaixas.length === 0 ? (
+          <p className="vazio">Ninguém operou o balcão ainda.</p>
+        ) : (
+          <ul className="extrato">
+            {equipeECaixas.map((p) => (
+              <li key={p.id}>
+                <Link className="extrato-linha" href={`/app/admin/relatorio?caixa=${encodeURIComponent(p.email)}`}>
+                  <Avatar id={p.id} nome={p.nome || "?"} />
+                  <span className="extrato-texto">
+                    <span className="extrato-nome">{p.nome || "Sem nome"}</span>
+                    <span className="extrato-detalhe">
+                      {p.papel === "admin" ? "Admin" : p.papel === "caixa" ? "Caixa" : "não é mais Caixa"}
+                      {!p.ativo && " · bloqueada"}
+                    </span>
+                  </span>
+                  <span className="extrato-valor">{moeda(p.saldoCaixa)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section aria-labelledby="titulo-limite">
         <form className="busca" action={mudarLimitePadrao}>
@@ -105,8 +136,8 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
           <button className="botao botao--contorno" type="submit">Salvar</button>
         </form>
         <p className="mensagem lista-rotulo">
-          Quanto cada Caixa pode ficar negativo ao distribuir. Vale para todo Caixa sem limite individual; o
-          individual se define na ficha da pessoa.
+          Quanto o saldo de caixa de cada Caixa pode ficar negativo ao distribuir. Vale para todo Caixa sem limite
+          individual; o individual se define na ficha da pessoa.
         </p>
       </section>
 

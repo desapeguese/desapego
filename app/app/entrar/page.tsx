@@ -29,8 +29,8 @@ export default async function Entrar() {
       />
 
       <header className="entrada-texto">
-        <p className="rotulo">moeda social Desapego</p>
-        <h1 className="app-titulo" style={{ textAlign: "left" }}>A riqueza está em circular</h1>
+        <h1 className="app-titulo" style={{ textAlign: "left" }}>Moeda Social Desapego</h1>
+        <p className="entrada-lema">A riqueza está em circular</p>
         {cadastroAberto ? (
           <p>
             Entre sem senha: enviamos um código para o seu e-mail. Se ainda não

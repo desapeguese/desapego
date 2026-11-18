@@ -17,7 +17,7 @@ export default function Home() {
         </p>
         <h1 className="titulo">Moeda Social Desapego</h1>
         <p className="subtitulo">
-          Uma nova economia <em>é possível</em>
+          A riqueza está <em>em circular</em>
         </p>
       </header>
 

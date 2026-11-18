@@ -64,7 +64,9 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <Topo titulo="Transações" voltar={{ href: "/app/admin", rotulo: "Voltar ao Admin" }} />
+      <Topo titulo="Transações" voltar={{ href: "/app/admin", rotulo: "Voltar ao Admin" }}>
+        <p className="app-subtitulo">Todas as transações do sistema. Filtre por data, tipo ou pessoa e baixe em CSV.</p>
+      </Topo>
 
       <form className="formulario cartao" action={base}>
         {edicoes.length > 0 && (
@@ -111,6 +113,14 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
           <span>Envolvendo (e-mail)</span>
           <input name="usuario" type="email" inputMode="email" autoCapitalize="none" autoComplete="off" defaultValue={texto.usuario} />
         </label>
+        <label className="campo">
+          <span>Modo Caixa de (e-mail)</span>
+          <input name="caixa" type="email" inputMode="email" autoCapitalize="none" autoComplete="off" defaultValue={texto.caixa} />
+        </label>
+        <p className="mensagem">
+          “Modo Caixa de” mostra só o que a pessoa movimentou no saldo de caixa dela, mesmo que não seja mais
+          Caixa.
+        </p>
         <button className="botao" type="submit">Filtrar</button>
         {consulta.size > 0 && <Link className="link" href={base}>Limpar filtros</Link>}
       </form>
@@ -210,7 +220,9 @@ export default async function Relatorio({ searchParams }: { searchParams: Promis
                 <Link className="extrato-linha" href={`/app/caixa/transacao/${t.id}`}>
                   <span className="extrato-texto">
                     <span className="extrato-nome">
-                      {t.deNome || "Sem nome"} → {t.paraNome || "Sem nome"}
+                      {t.deNome || "Sem nome"}
+                      {t.deCaixa ? " (caixa)" : ""} → {t.paraNome || "Sem nome"}
+                      {t.paraCaixa ? " (caixa)" : ""}
                     </span>
                     <span className="extrato-detalhe">
                       {NOME_TIPO[t.tipo]}

@@ -6,7 +6,7 @@ import { db, schema } from "./db";
 import type { Papel } from "./db/schema";
 
 /** Data do texto em vigor (app/termos/page.tsx, docs/termos-de-uso.md). */
-export const VERSAO_TERMOS = "2026-11-07";
+export const VERSAO_TERMOS = "2026-11-18";
 
 export type Pessoa = typeof schema.user.$inferSelect;
 

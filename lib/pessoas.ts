@@ -1,8 +1,20 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import type { Banco } from "./db";
-import { account, auditoria, configuracao, conta, passkey, session, twoFactor, user, PAPEIS, type Papel } from "./db/schema";
-import { CHAVE_LIMITE_CAIXA, LIMITE_PADRAO_CAIXA } from "./ledger";
+import {
+  account,
+  auditoria,
+  configuracao,
+  conta,
+  passkey,
+  session,
+  twoFactor,
+  user,
+  verification,
+  PAPEIS,
+  type Papel,
+} from "./db/schema";
+import { CHAVE_LIMITE_CAIXA, fecharCaixa, LIMITE_PADRAO_CAIXA } from "./ledger";
 
 /**
  * Gestão de pessoas pelo Caixa e pelo Admin. Como o livro (lib/ledger.ts), este
@@ -22,7 +34,10 @@ export type CodigoErroPessoa =
   | "ULTIMO_ADMIN"
   | "PROPRIA_CONTA"
   | "PAPEL_INVALIDO"
-  | "LIMITE_INVALIDO";
+  | "LIMITE_INVALIDO"
+  | "MOTIVO_OBRIGATORIO"
+  | "SALDO_PENDENTE"
+  | "CONFIRMACAO_INVALIDA";
 
 export class ErroPessoa extends Error {
   constructor(
@@ -103,7 +118,9 @@ const colunas = {
   criadaEm: user.createdAt,
   termosAceitosEm: user.termosAceitosEm,
   saldo: sql<number>`coalesce(${conta.saldo}, 0)`.mapWith(Number),
-  /** Limite individual; nulo = o padrão do perfil. */
+  /** O saldo do modo Caixa (zero para quem nunca operou o balcão). */
+  saldoCaixa: sql<number>`coalesce(${conta.saldoCaixa}, 0)`.mapWith(Number),
+  /** Limite individual do saldo de caixa; nulo = o padrão do perfil Caixa. */
   limiteNegativo: conta.limiteNegativo,
   numero: sql<number>`coalesce(${conta.numero}, 0)`.mapWith(Number),
 };
@@ -282,19 +299,30 @@ export async function editarPessoa(
  * Desativa ou reativa. Nada é apagado: saldo e histórico ficam, a pessoa só
  * deixa de entrar e de transacionar.
  */
-export async function definirAtivo(db: Banco, ator: Ator, alvoId: string, ativo: boolean): Promise<void> {
+export async function definirAtivo(
+  db: Banco,
+  ator: Ator,
+  alvoId: string,
+  ativo: boolean,
+  /** Obrigatório ao desativar: é o que a pessoa recebe por e-mail. */
+  motivo = "",
+): Promise<{ email: string; mudou: boolean }> {
   exigirEquipe(ator);
   if (ator.id === alvoId) {
     throw new ErroPessoa("PROPRIA_CONTA", "Você não pode desativar a própria conta.");
   }
+  const texto = motivo.trim().slice(0, 300);
+  if (!ativo && texto.length < 3) {
+    throw new ErroPessoa("MOTIVO_OBRIGATORIO", "Informe o motivo: a pessoa é avisada por e-mail.");
+  }
 
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [alvo] = await tx.select().from(user).where(eq(user.id, alvoId)).for("update");
     if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
     if (!podeGerenciar(ator, alvo)) {
       throw new ErroPessoa("SEM_PERMISSAO", "Só um Admin pode desativar Caixa e Admin.");
     }
-    if (alvo.ativo === ativo) return;
+    if (alvo.ativo === ativo) return { email: alvo.email, mudou: false };
 
     if (!ativo && alvo.papel === "admin") {
       const [{ outros }] = await tx
@@ -310,8 +338,9 @@ export async function definirAtivo(db: Banco, ator: Ator, alvoId: string, ativo:
       atorId: ator.id,
       alvoId,
       acao: ativo ? "reativada" : "desativada",
-      detalhes: {},
+      detalhes: ativo ? {} : { motivo: texto },
     });
+    return { email: alvo.email, mudou: true };
   });
 }
 
@@ -342,7 +371,7 @@ export async function definirPapel(
   ator: Ator,
   alvoId: string,
   papel: Papel,
-): Promise<{ de: Papel; para: Papel; email: string }> {
+): Promise<{ de: Papel; para: Papel; email: string; caixaFechado: number }> {
   exigirAdmin(ator);
   if (!PAPEIS.includes(papel)) throw new ErroPessoa("PAPEL_INVALIDO", "Perfil inválido.");
   if (ator.id === alvoId) throw new ErroPessoa("PROPRIA_CONTA", "Você não pode mudar o próprio perfil.");
@@ -350,7 +379,7 @@ export async function definirPapel(
   return db.transaction(async (tx) => {
     const [alvo] = await tx.select().from(user).where(eq(user.id, alvoId)).for("update");
     if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
-    if (alvo.papel === papel) return { de: alvo.papel, para: papel, email: alvo.email };
+    if (alvo.papel === papel) return { de: alvo.papel, para: papel, email: alvo.email, caixaFechado: 0 };
 
     if (alvo.papel === "admin" && alvo.ativo) {
       const [{ outros }] = await tx
@@ -361,19 +390,30 @@ export async function definirPapel(
     }
 
     await tx.update(user).set({ papel, updatedAt: new Date() }).where(eq(user.id, alvoId));
+
+    // Quem volta a ser usuário comum não leva o caixa junto: o saldo de caixa
+    // (negativo ou positivo) passa ao Admin que tirou o perfil, e o limite
+    // individual deixa de existir. O saldo pessoal não muda.
+    let caixaFechado = 0;
+    if (papel === "usuario") {
+      const fechamento = await fecharCaixa(tx as unknown as Banco, { alvoId, adminId: ator.id });
+      if (fechamento) caixaFechado = fechamento.deConta === alvoId ? fechamento.valor : -fechamento.valor;
+      await tx.update(conta).set({ limiteNegativo: null }).where(eq(conta.usuarioId, alvoId));
+    }
+
     await tx.insert(auditoria).values({
       atorId: ator.id,
       alvoId,
       acao: "papel_alterado",
-      detalhes: { de: alvo.papel, para: papel },
+      detalhes: { de: alvo.papel, para: papel, ...(caixaFechado !== 0 ? { caixaFechado } : {}) },
     });
-    return { de: alvo.papel, para: papel, email: alvo.email };
+    return { de: alvo.papel, para: papel, email: alvo.email, caixaFechado };
   });
 }
 
 /**
- * Limite negativo individual: um Caixa com limite próprio ou um usuário com
- * crédito especial. `null` volta ao padrão do perfil.
+ * Limite individual do saldo de caixa de um Caixa. `null` volta ao padrão do
+ * perfil. Usuário comum não tem limite: o saldo pessoal não fica negativo.
  */
 export async function definirLimite(db: Banco, ator: Ator, alvoId: string, limite: number | null): Promise<void> {
   exigirAdmin(ator);
@@ -382,8 +422,11 @@ export async function definirLimite(db: Banco, ator: Ator, alvoId: string, limit
   await db.transaction(async (tx) => {
     const [alvo] = await tx.select({ papel: user.papel }).from(user).where(eq(user.id, alvoId));
     if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
-    if (alvo.papel === "admin") {
-      throw new ErroPessoa("LIMITE_INVALIDO", "Admin não tem limite negativo.");
+    if (alvo.papel !== "caixa") {
+      throw new ErroPessoa(
+        "LIMITE_INVALIDO",
+        alvo.papel === "admin" ? "Admin não tem limite." : "Só o perfil Caixa tem limite negativo.",
+      );
     }
     await tx.insert(conta).values({ usuarioId: alvoId }).onConflictDoNothing();
     const [atual] = await tx.select().from(conta).where(eq(conta.usuarioId, alvoId)).for("update");
@@ -435,6 +478,25 @@ export async function listarEquipe(db: Banco, ator: Ator) {
     .leftJoin(conta, eq(conta.usuarioId, user.id))
     .where(ne(user.papel, "usuario"))
     .orderBy(user.papel, user.name);
+}
+
+/**
+ * Quem tem (ou teve) um caixa: a equipe atual e qualquer pessoa que já tenha
+ * movimentado saldo de caixa, mesmo que não seja mais Caixa.
+ */
+export async function listarCaixas(db: Banco, ator: Ator) {
+  exigirAdmin(ator);
+  return db
+    .select(colunas)
+    .from(user)
+    .leftJoin(conta, eq(conta.usuarioId, user.id))
+    .where(
+      or(
+        ne(user.papel, "usuario"),
+        sql`exists (select 1 from transacao t where (t.de_conta = ${user.id} and t.de_caixa) or (t.para_conta = ${user.id} and t.para_caixa))`,
+      ),
+    )
+    .orderBy(sql`coalesce(${conta.saldoCaixa}, 0)`, user.name);
 }
 
 export type LinhaAuditoriaGlobal = LinhaAuditoria & { alvoId: string | null; alvoNome: string | null };
@@ -501,4 +563,54 @@ export async function protecaoDaConta(db: Banco, ator: Ator, alvoId: string) {
     .where(eq(passkey.userId, alvoId));
   const [alvo] = await db.select({ ativo: user.twoFactorEnabled }).from(user).where(eq(user.id, alvoId));
   return { passkeys: total, autenticador: alvo?.ativo ?? false };
+}
+
+/**
+ * Encerra a conta a pedido da pessoa (LGPD): apaga nome, e-mail, telefone e
+ * credenciais, e põe no lugar um código que não leva de volta a ela. As
+ * transações ficam, sem identificar ninguém. Não tem volta.
+ *
+ * Exige saldos zerados: o que a pessoa tinha deve ser usado, trocado por
+ * cédulas ou acertado no balcão antes.
+ */
+export async function anonimizarPessoa(db: Banco, ator: Ator, alvoId: string): Promise<{ emailAntigo: string }> {
+  exigirAdmin(ator);
+  if (ator.id === alvoId) throw new ErroPessoa("PROPRIA_CONTA", "Você não pode encerrar a própria conta.");
+
+  return db.transaction(async (tx) => {
+    const [alvo] = await tx.select().from(user).where(eq(user.id, alvoId)).for("update");
+    if (!alvo) throw new ErroPessoa("NAO_ENCONTRADA", "Pessoa não encontrada.");
+    if (alvo.papel !== "usuario") {
+      throw new ErroPessoa("SEM_PERMISSAO", "Tire o perfil de Caixa ou Admin antes de encerrar a conta.");
+    }
+    const [saldos] = await tx.select().from(conta).where(eq(conta.usuarioId, alvoId)).for("update");
+    if (saldos && (saldos.saldo !== 0 || saldos.saldoCaixa !== 0)) {
+      throw new ErroPessoa("SALDO_PENDENTE", "A conta ainda tem saldo. Zere o saldo no balcão antes de encerrar.");
+    }
+
+    const codigo = randomBytes(9).toString("hex");
+    await tx.delete(session).where(eq(session.userId, alvoId));
+    await tx.delete(account).where(eq(account.userId, alvoId));
+    await tx.delete(passkey).where(eq(passkey.userId, alvoId));
+    await tx.delete(twoFactor).where(eq(twoFactor.userId, alvoId));
+    // Códigos de login pendentes ficam guardados sob o e-mail.
+    await tx.delete(verification).where(ilike(verification.identifier, `%${alvo.email.replace(/[\\%_]/g, "\\$&")}%`));
+    await tx
+      .update(user)
+      .set({
+        name: "Conta encerrada",
+        email: `encerrada-${codigo}@anonimo.invalid`,
+        emailVerified: false,
+        image: null,
+        telefone: null,
+        ativo: false,
+        twoFactorEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, alvoId));
+    // O registro da conta guardava nomes e e-mails antigos: fica só o fato.
+    await tx.update(auditoria).set({ detalhes: {} }).where(eq(auditoria.alvoId, alvoId));
+    await tx.insert(auditoria).values({ atorId: ator.id, alvoId, acao: "conta_encerrada", detalhes: {} });
+    return { emailAntigo: alvo.email };
+  });
 }

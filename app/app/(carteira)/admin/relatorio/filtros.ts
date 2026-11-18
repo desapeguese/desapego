@@ -22,7 +22,7 @@ async function idPorEmail(email: string): Promise<string | null> {
  */
 export async function lerFiltros(parametros: Parametros): Promise<{
   filtros: Filtros;
-  texto: { de: string; ate: string; tipo: string; operador: string; usuario: string; edicao: string };
+  texto: { de: string; ate: string; tipo: string; operador: string; usuario: string; caixa: string; edicao: string };
   /** A edição escolhida: as datas dela mandam nas datas digitadas. */
   edicao: Edicao | null;
   avisos: string[];
@@ -35,6 +35,7 @@ export async function lerFiltros(parametros: Parametros): Promise<{
     tipo: um(parametros.tipo),
     operador: um(parametros.operador),
     usuario: um(parametros.usuario),
+    caixa: um(parametros.caixa),
     edicao: um(parametros.edicao),
   };
   // Escolher uma edição é escolher o intervalo de dias dela.
@@ -60,7 +61,13 @@ export async function lerFiltros(parametros: Parametros): Promise<{
     if (usuarioId === NINGUEM) avisos.push(`Não existe conta com o e-mail “${texto.usuario}” (usuário).`);
   }
 
-  const filtros = limparFiltros({ de: texto.de, ate: texto.ate, tipo: texto.tipo, operadorId, usuarioId });
+  let caixaId: string | undefined;
+  if (texto.caixa) {
+    caixaId = (await idPorEmail(texto.caixa)) ?? NINGUEM;
+    if (caixaId === NINGUEM) avisos.push(`Não existe conta com o e-mail “${texto.caixa}” (modo Caixa).`);
+  }
+
+  const filtros = limparFiltros({ de: texto.de, ate: texto.ate, tipo: texto.tipo, operadorId, usuarioId, caixaId });
   if (texto.de && !filtros.de) avisos.push("Data inicial inválida: ignorada.");
   if (texto.ate && !filtros.ate) avisos.push("Data final inválida: ignorada.");
 

@@ -16,7 +16,7 @@ async function pessoa(id: string, papel: schema.Papel = "usuario", ativo = true)
   await db.insert(schema.user).values({ id, name: `${id} da Silva`, email: `${id}@teste.br`, papel, ativo });
 }
 const mover = (operadorId: string, contraparteId: string, tipo: "envio" | "dar" | "tomar" | "deposito_cedula" | "saque_cedula", valor: number) =>
-  transferir(db, { operadorId, contraparteId, tipo, valor, descricao: "x", chaveIdempotencia: `k${++n}`, confirmarNegativo: true });
+  transferir(db, { operadorId, contraparteId, tipo, valor, descricao: "x", chaveIdempotencia: `k${++n}` });
 
 beforeEach(async () => {
   const banco = drizzle(new PGlite(), { schema });
@@ -57,6 +57,16 @@ describe("resumo do período", () => {
     expect(await resumirPeriodo(db, { usuarioId: "ninguem" })).toMatchObject({ transacoes: 0, volume: 0, pessoasAtivas: 0, porTipo: [] });
   });
 
+  it("filtra só o que uma pessoa movimentou no modo Caixa", async () => {
+    // caixa operou: dar 100, tomar 20, depósito 7, saque 2. O envio ana→bia não é dele.
+    expect(await resumirPeriodo(db, { caixaId: "caixa" })).toMatchObject({ transacoes: 4, volume: 129 });
+    expect(await resumirPeriodo(db, { caixaId: "admin" })).toMatchObject({ transacoes: 1, volume: 40 });
+    // ana participou de quatro operações de balcão, mas nunca no modo Caixa.
+    expect(await resumirPeriodo(db, { caixaId: "ana" })).toMatchObject({ transacoes: 0 });
+    const { linhas } = await listarTransacoes(db, { caixaId: "caixa", tipo: "tomar" });
+    expect(linhas).toMatchObject([{ deId: "bia", deCaixa: false, paraId: "caixa", paraCaixa: true }]);
+  });
+
   it("filtra por dia no horário de Brasília, com as duas pontas inclusivas", async () => {
     const [{ hoje, ontem, amanha }] = (
       await db.execute(sql`
@@ -73,21 +83,23 @@ describe("resumo do período", () => {
 });
 
 describe("retrato atual", () => {
-  it("mostra circulação, emissão da organização, destaques e integridade", async () => {
-    // ana: +100 −30 +7 −2 = 75; bia: +40 +30 −20 = 50; caixa: −100 +20 −7 +2 = −85; admin: −40
+  it("mostra circulação, saldo dos caixas, destaques e integridade", async () => {
+    // pessoais — ana: +100 −30 +7 −2 = 75; bia: +40 +30 −20 = 50
+    // de caixa — caixa: −100 +20 −7 +2 = −85; admin: −40
     const r = await retratoAtual(db);
-    expect(r).toMatchObject({ pessoas: 5, pessoasAtivas: 4, somaPositivos: 125, somaNegativos: -125, negativoDaOrganizacao: -125 });
+    expect(r).toMatchObject({ pessoas: 5, pessoasAtivas: 4, somaPositivos: 125, somaNegativos: 0, saldoDosCaixas: -125 });
     expect(r.maioresPositivos.map((p) => [p.id, p.saldo])).toEqual([["ana", 75], ["bia", 50]]);
-    expect(r.maioresNegativos.map((p) => [p.id, p.saldo])).toEqual([["caixa", -85], ["admin", -40]]);
+    expect(r.maioresNegativos).toEqual([]);
+    expect(r.caixas.map((p) => [p.id, p.saldo])).toEqual([["caixa", -85], ["admin", -40]]);
     expect(r.integridade.integro).toBe(true);
   });
 
-  it("usuário negativo conta nos negativos, mas não na emissão da organização", async () => {
-    await mover("caixa", "bia", "tomar", 60);
+  it("saldo pessoal negativo (Admin, estorno) aparece à parte dos caixas", async () => {
+    await mover("admin", "ana", "envio", 15);
     const r = await retratoAtual(db);
-    expect(r.somaNegativos).toBe(-75);
-    expect(r.negativoDaOrganizacao).toBe(-65);
-    expect(r.maioresNegativos.map((p) => p.id)).toEqual(["admin", "caixa", "bia"]);
+    expect(r.somaNegativos).toBe(-15);
+    expect(r.saldoDosCaixas).toBe(-125);
+    expect(r.maioresNegativos.map((p) => [p.id, p.saldo])).toEqual([["admin", -15]]);
   });
 });
 
